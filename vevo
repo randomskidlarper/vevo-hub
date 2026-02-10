@@ -1,7 +1,34 @@
+-- Vevo Hub - Alternative version
+local function loadLibrary()
+    -- Try multiple sources
+    local sources = {
+        "https://raw.githubusercontent.com/wally-rblx/LinoriaLib/main/Library.lua",
+        "https://raw.githubusercontent.com/UI-Libraries/LinoriaLib/main/Library.lua",
+        "https://pastebin.com/raw/qCJXW7Gz"
+    }
+    
+    for _, url in ipairs(sources) do
+        local success, result = pcall(function()
+            return loadstring(game:HttpGet(url, true))()
+        end)
+        
+        if success then
+            print("✓ Loaded from: " .. url)
+            return result
+        end
+    end
+    
+    error("Failed to load Library")
+end
+
+local Library = loadLibrary()
+
+-- Continue with your script...
+
 -- Venom Hub
 -- V.1.3 (Updated with new features)
 
-local repo = 'https://raw.githubusercontent.com/randomskidlarper/vevo-hub/main/'
+local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
 
 local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
