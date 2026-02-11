@@ -38,11 +38,7 @@ local Animations = {
 
 local RinAnimations = {
     Prehold = 'rbxassetid://139333593369314',
-    Aimbot = 'rbxassetid://139333593369314',
-    Chip = 'rbxassetid://139333593369314',
-    DTap = 'rbxassetid://139333593369314',
-    Shove = 'rbxassetid://139333593369314',
-    Header = 'rbxassetid://139333593369314'
+    Aimbot = 'rbxassetid://139333593369314',   
 }
 
 -- LEFT SIDE GROUPS (MAIN TAB)
