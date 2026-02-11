@@ -1,5 +1,5 @@
 -- Venom Hub
--- V.1.3 (Updated with new features)
+-- V.1.2 (Updated with new features)
 
 local repo = 'https://raw.githubusercontent.com/violin-suzutsuki/LinoriaLib/main/'
 
@@ -7,8 +7,11 @@ local Library = loadstring(game:HttpGet(repo .. 'Library.lua'))()
 local ThemeManager = loadstring(game:HttpGet(repo .. 'addons/ThemeManager.lua'))()
 local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 
+-- Set grayish accent color
+Library.AccentColor = Color3.fromHex('#333333')
+
 local Window = Library:CreateWindow({
-    Title = 'Vevo Hub v1.3',
+    Title = 'Vevo Hub v1.2',
     Center = true,
     AutoShow = true,
     TabPadding = 8,
@@ -18,27 +21,29 @@ local Window = Library:CreateWindow({
 local Tabs = {
     Main = Window:AddTab('Main'),
     Interpolation = Window:AddTab('Interpolation'),
+    Pack = Window:AddTab('Pack'),
     Configuration = Window:AddTab('Configuration'),
     ['UI Settings'] = Window:AddTab('UI Settings'),
 }
 
--- Helper function to get animation ID based on Rin Pack toggle
-local function getAnimationID(defaultID)
-    if Toggles.RinPackToggle and Toggles.RinPackToggle.Value then
-        return '"rbxassetid://11883854957696"'
-    else
-        return '"' .. defaultID .. '"'
-    end
-end
+-- Animation ID tracking for Rin pack
+local Animations = {
+    Prehold = 'rbxassetid://15434792076',
+    Aimbot = 'rbxassetid://15434792076',
+    Chip = 'rbxassetid://15134077897',
+    DTap = 'rbxassetid://16859143160',
+    Shove = 'rbxassetid://15417325996',
+    Header = 'rbxassetid://15684799301'
+}
 
--- Helper function to get keybind enum
-local function getKeybindEnum(keybindOption)
-    if keybindOption and keybindOption.Value then
-        return 'Enum.KeyCode.' .. keybindOption.Value
-    else
-        return 'nil' -- Will use default in script
-    end
-end
+local RinAnimations = {
+    Prehold = 'rbxassetid://139333593369314',
+    Aimbot = 'rbxassetid://139333593369314',
+    Chip = 'rbxassetid://139333593369314',
+    DTap = 'rbxassetid://139333593369314',
+    Shove = 'rbxassetid://139333593369314',
+    Header = 'rbxassetid://139333593369314'
+}
 
 -- LEFT SIDE GROUPS (MAIN TAB)
 local SpeedGroup = Tabs.Main:AddLeftGroupbox('Speed Hack')
@@ -146,23 +151,392 @@ LastDiscGroup:AddToggle('LastDiscToggle', {
     end
 })
 
-if Options.LastDiscKeybind then
-    LastDiscGroup:AddLabel('Keybind: ' .. Options.LastDiscKeybind.Value)
-end
+LastDiscGroup:AddLabel('Keybind: J')
+
+-- SHOVE REACH FEATURE
+local ShoveGroup = Tabs.Main:AddLeftGroupbox('Shove Reach')
+ShoveGroup:AddToggle('ShoveToggle', {
+    Text = 'Enable Shove Reach',
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local reachValue = Options.ShoveReachSlider.Value
+            loadstring([[
+                local Players = game:GetService("Players")
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local Workspace = game:GetService("Workspace")
+                local RunService = game:GetService("RunService")
+
+                local Knit = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"))
+                local KeyHandlerService = Knit.GetService("KeyHandlerService")
+                local shoveRemote = KeyHandlerService:GetKey("ShoveCheck")
+
+                local reachDistance = ]] .. reachValue .. [[
+                local cooldownTime = 15
+                local lastUsedTime = 0
+                local animationId = ]] .. (Toggles.RinPackToggle and Toggles.RinPackToggle.Value and '"rbxassetid://139333593369314"' or '"rbxassetid://15417325996"') .. [[
+                local scriptActive = true
+
+                local function getNearestPlayer()
+                    local localPlayer = Players.LocalPlayer
+                    local character = localPlayer.Character
+                    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil end
+
+                    local nearestPlayer = nil
+                    local shortestDistance = math.huge
+
+                    for _, player in ipairs(Players:GetPlayers()) do
+                        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
+                            local dist = (character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
+                            
+                            if dist < shortestDistance then
+                                shortestDistance = dist
+                                nearestPlayer = player
+                            end
+                        end
+                    end
+                    return nearestPlayer, shortestDistance
+                end
+
+                local function playShoveAnimation()
+                    local character = Players.LocalPlayer.Character
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    local animator = humanoid and (humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator"))
+                    
+                    if animator then
+                        local anim = Instance.new("Animation")
+                        anim.AnimationId = animationId
+                        local track = animator:LoadAnimation(anim)
+                        track:Play()
+                    end
+                end
+
+                RunService.Heartbeat:Connect(function()
+                    if not scriptActive or not Toggles.ShoveToggle.Value then return end
+                    
+                    local currentTime = tick()
+                    if currentTime - lastUsedTime < cooldownTime then return end
+
+                    local ball = Workspace:FindFirstChild("Temp") and Workspace.Temp:FindFirstChild("Ball")
+                    if not (ball and ball:FindFirstChild("PossessionHighlight")) then return end
+
+                    local targetPlayer, distance = getNearestPlayer()
+                    if targetPlayer and distance <= reachDistance then
+                        local container = Workspace:FindFirstChild("CharacterContainer")
+                        local targetChar = container and container:FindFirstChild(targetPlayer.Name)
+
+                        if targetChar then
+                            shoveRemote:FireServer(targetChar)
+                            playShoveAnimation()
+                            lastUsedTime = currentTime
+                        end
+                    end
+                end)
+            ]])()
+        end
+    end
+})
+
+ShoveGroup:AddSlider('ShoveReachSlider', {
+    Text = 'Reach Distance',
+    Default = 25,
+    Min = 10,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(Value)
+        -- Value handled in script
+    end
+})
+
+ShoveGroup:AddLabel('Auto-shoves nearest player when you have ball')
+
+-- AUTO CHIP FEATURE
+local AutoChipGroup = Tabs.Main:AddLeftGroupbox('Auto Chip')
+AutoChipGroup:AddToggle('AutoChipToggle', {
+    Text = 'Enable Auto Chip',
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local chipForce = Options.ChipForceSlider.Value
+            local chipVector = Options.ChipVectorSlider.Value
+            loadstring([[
+                local Players = game:GetService('Players')
+                local ReplicatedStorage = game:GetService('ReplicatedStorage')
+                local UserInputService = game:GetService('UserInputService')
+                local Knit = require(ReplicatedStorage.Packages.Knit)
+                local KeyHandlerService = Knit.GetService('KeyHandlerService')
+                local TapInRemote = KeyHandlerService:GetKey('TapInHit')
+
+                local player = Players.LocalPlayer
+                local CHIP_FORCE = ]] .. chipForce .. [[
+                local CHIP_VECTOR_MULT = ]] .. chipVector .. [[
+                local CHIP_ANIM_ID = ]] .. (Toggles.RinPackToggle and Toggles.RinPackToggle.Value and '"rbxassetid://139333593369314"' or '"rbxassetid://15134077897"') .. [[
+                local autoChipEnabled = true
+                local TOGGLE_KEY = Enum.KeyCode.Five
+
+                local function getBall()
+                    local folder = workspace:FindFirstChild('Temp')
+                    return folder and folder:FindFirstChild('Ball')
+                end
+
+                local function playAnimation(id)
+                    local char = player.Character
+                    if not char then return end
+                    local hum = char:FindFirstChildOfClass('Humanoid')
+                    local animator = hum and (hum:FindFirstChildOfClass('Animator') or Instance.new('Animator', hum))
+                    if not animator then return end
+                    
+                    local anim = Instance.new('Animation')
+                    anim.AnimationId = id
+                    local track = animator:LoadAnimation(anim)
+                    track:Play()
+                end
+
+                local function getDirectionAndFlick()
+                    local char = player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChild("Humanoid")
+                    
+                    if not hrp or not hum then return nil end
+                    
+                    local moveDir = hum.MoveDirection
+                    
+                    if moveDir.Magnitude == 0 then
+                        local camDir = workspace.CurrentCamera.CFrame.LookVector
+                        moveDir = Vector3.new(camDir.X, 0, camDir.Z).Unit
+                    end
+                    
+                    hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + moveDir)
+                    
+                    local baseVector = Vector3.new(14.2802124 * CHIP_VECTOR_MULT, 21.8535023 * CHIP_VECTOR_MULT, 32.024025 * CHIP_VECTOR_MULT)
+                    local horizontalMag = Vector3.new(baseVector.X, 0, baseVector.Z).Magnitude
+                    return Vector3.new(moveDir.X * horizontalMag, baseVector.Y, moveDir.Z * horizontalMag)
+                end
+
+                UserInputService.InputBegan:Connect(function(input, gp)
+                    if gp or not autoChipEnabled then return end
+                    if input.KeyCode == TOGGLE_KEY then
+                        local ball = getBall()
+                        if not ball then return end
+
+                        local finalVector = getDirectionAndFlick()
+                        if not finalVector then return end
+
+                        playAnimation(CHIP_ANIM_ID)
+                        TapInRemote:FireServer(ball, false, CHIP_FORCE, finalVector, 'Right')
+                    end
+                end)
+            ]])()
+        end
+    end
+})
+
+AutoChipGroup:AddSlider('ChipForceSlider', {
+    Text = 'Chip Force',
+    Default = 27.13,
+    Min = 10,
+    Max = 100,
+    Rounding = 2,
+    Callback = function(Value) end
+})
+
+AutoChipGroup:AddSlider('ChipVectorSlider', {
+    Text = 'Chip Vector Multiplier',
+    Default = 1.0,
+    Min = 0.5,
+    Max = 3.0,
+    Rounding = 1,
+    Callback = function(Value) end
+})
+
+AutoChipGroup:AddLabel('Keybind: 5')
+
+-- AIMBOT V2 (STANDALONE)
+local AimbotV2Group = Tabs.Main:AddLeftGroupbox('Aimbot V2 (Top/Bottom Bins)')
+AimbotV2Group:AddToggle('AimbotV2Toggle', {
+    Text = 'Enable Aimbot V2',
+    Default = false,
+    Callback = function(Value)
+        if Value then
+            local fireRange = Options.AimbotV2RangeSlider.Value
+            local kickPower = Options.AimbotV2PowerSlider.Value
+            loadstring([[
+                local Players = game:GetService("Players")
+                local ReplicatedStorage = game:GetService("ReplicatedStorage")
+                local Workspace = game:GetService("Workspace")
+                local RunService = game:GetService("RunService")
+                local UserInputService = game:GetService("UserInputService")
+
+                local player = Players.LocalPlayer
+                local Knit = require(ReplicatedStorage.Packages.Knit)
+                local KeyHandlerService = Knit.GetService("KeyHandlerService")
+                local kickRemote = KeyHandlerService:GetKey("Kick")
+
+                -- Settings
+                local FIRE_RANGE = ]] .. fireRange .. [[
+                local KICK_POWER = ]] .. kickPower .. [[
+                local COOLDOWN = 1
+                local animationId = ]] .. (Toggles.RinPackToggle and Toggles.RinPackToggle.Value and '"rbxassetid://139333593369314"' or '"rbxassetid://15434792076"') .. [[
+
+                -- State
+                local topEnabled = false
+                local bottomEnabled = false
+                local lastFire = 0
+
+                -- UI INDICATOR
+                local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
+                gui.Name = "AimbotV2Indicator"
+
+                local function mkLabel(y, text)
+                    local l = Instance.new("TextLabel")
+                    l.Parent = gui
+                    l.Size = UDim2.new(0, 120, 0, 30)
+                    l.Position = UDim2.new(1, -130, 0, y)
+                    l.BackgroundTransparency = 0.5
+                    l.BackgroundColor3 = Color3.new(0, 0, 0)
+                    l.TextColor3 = Color3.new(1, 1, 1)
+                    l.TextScaled = true
+                    l.Font = Enum.Font.SourceSansBold
+                    l.Text = text
+                    return l
+                end
+
+                local topLbl = mkLabel(10, "TOP OFF")
+                local botLbl = mkLabel(45, "BOT OFF")
+
+                local function updateUI()
+                    topLbl.Text = topEnabled and "TOP ON" or "TOP OFF"
+                    topLbl.TextColor3 = topEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                    
+                    botLbl.Text = bottomEnabled and "BOT ON" or "BOT OFF"
+                    botLbl.TextColor3 = bottomEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
+                end
+
+                local function playAnimation(character)
+                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+                    local animator = humanoid and (humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator"))
+                    
+                    if animator then
+                        local anim = Instance.new("Animation")
+                        anim.AnimationId = animationId
+                        local track = animator:LoadAnimation(anim)
+                        track:Play()
+                    end
+                end
+
+                local function getBall()
+                    local temp = Workspace:FindFirstChild("Temp")
+                    return temp and temp:FindFirstChild("Ball")
+                end
+
+                local function getField()
+                    for _, v in ipairs(Workspace:GetDescendants()) do
+                        if v.Name == "Field" and v:FindFirstChild("GoalboxHome") then return v end
+                    end
+                end
+
+                local function getTarget(parts)
+                    local cam = Workspace.CurrentCamera
+                    local best, bestScore
+                    for _, p in ipairs(parts) do
+                        if p and p:IsA("BasePart") then
+                            local dir = (p.Position - cam.CFrame.Position).Unit
+                            local score = cam.CFrame.LookVector:Dot(dir)
+                            if not bestScore or score > bestScore then
+                                bestScore = score
+                                best = p
+                            end
+                        end
+                    end
+                    return best
+                end
+
+                local function fire(target)
+                    if tick() - lastFire < COOLDOWN then return end
+                    lastFire = tick()
+
+                    local ball = getBall()
+                    local char = player.Character
+                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
+                    local hum = char and char:FindFirstChildOfClass("Humanoid")
+                    if not ball or not hrp or not hum or not target then return end
+
+                    Workspace.CurrentCamera.CFrame = CFrame.new(Workspace.CurrentCamera.CFrame.Position, target.Position)
+                    hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(target.Position.X, hrp.Position.Y, target.Position.Z))
+
+                    local side = hrp.CFrame.RightVector:Dot(ball.Position - hrp.Position) > 0 and "Right" or "Left"
+                    kickRemote:FireServer((target.Position - hrp.Position).Unit * 200, ball, false, true, KICK_POWER, side, hrp.CFrame, {Enum.KeyCode.One}, false, false)
+                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
+                    playAnimation(char)
+                end
+
+                UserInputService.InputBegan:Connect(function(input, gp)
+                    if gp then return end
+                    if not Toggles.AimbotV2Toggle.Value then return end
+                    
+                    if input.KeyCode == Enum.KeyCode.One then
+                        topEnabled = not topEnabled
+                        bottomEnabled = false
+                    elseif input.KeyCode == Enum.KeyCode.Two then
+                        bottomEnabled = not bottomEnabled
+                        topEnabled = false
+                    end
+                    updateUI()
+                end)
+
+                RunService.RenderStepped:Connect(function()
+                    if not Toggles.AimbotV2Toggle.Value or (not topEnabled and not bottomEnabled) then return end
+                    
+                    local ball = getBall()
+                    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+                    if ball and hrp and (ball.Position - hrp.Position).Magnitude <= FIRE_RANGE then
+                        local f = getField()
+                        if not f then return end
+                        
+                        if topEnabled then
+                            fire(getTarget({f.GoalboxHome["TOP RIGHT"], f.GoalboxHome["TOP LEFT"], f.GoalboxAway["TOP RIGHT"], f.GoalboxAway["TOP LEFT"]}))
+                        else
+                            fire(getTarget({f.GoalboxHome["BOTTOM RIGHT"], f.GoalboxHome["BOTTOM LEFT"], f.GoalboxAway["BOTTOM RIGHT"], f.GoalboxAway["BOTTOM LEFT"]}))
+                        end
+                    end
+                end)
+
+                updateUI()
+            ]])()
+        end
+    end
+})
+
+AimbotV2Group:AddSlider('AimbotV2RangeSlider', {
+    Text = 'Activation Range',
+    Default = 7,
+    Min = 3,
+    Max = 20,
+    Rounding = 0,
+    Callback = function(Value) end
+})
+
+AimbotV2Group:AddSlider('AimbotV2PowerSlider', {
+    Text = 'Kick Power',
+    Default = 140,
+    Min = 100,
+    Max = 999,
+    Rounding = 0,
+    Callback = function(Value) end
+})
+
+AimbotV2Group:AddLabel('Key 1: Top Bins | Key 2: Bottom Bins')
+AimbotV2Group:AddLabel('Auto-aims and shoots at goal targets')
 
 -- COMBAT FEATURES IN MAIN TAB
 local AimGroup = Tabs.Main:AddLeftGroupbox('Aimbot V1')
 AimGroup:AddToggle('AimbotToggle', {
-    Text = 'Enable Aimbot V1',
+    Text = 'Enable Aimbot',
     Default = false,
     Callback = function(Value)
         if Value then
-            local animationId = getAnimationID('rbxassetid://15434792076')
-            local highKey = getKeybindEnum(Options.AimbotHighKeybind) or 'Enum.KeyCode.V'
-            local lowKey = getKeybindEnum(Options.AimbotLowKeybind) or 'Enum.KeyCode.B'
-            local powerValue = Options.AimbotPowerSlider and Options.AimbotPowerSlider.Value or 100
-            
-            local script = [[
+            local animId = Toggles.RinPackToggle and Toggles.RinPackToggle.Value and 'rbxassetid://139333593369314' or 'rbxassetid://15434792076'
+            loadstring([[
                 --!nocheck
                 local Players = game:GetService('Players')
                 local ReplicatedStorage = game:GetService('ReplicatedStorage')
@@ -170,30 +544,25 @@ AimGroup:AddToggle('AimbotToggle', {
                 local Workspace = game:GetService('Workspace')
                 local RunService = game:GetService('RunService')
 
-                -- Knit Setup
                 local Knit = require(ReplicatedStorage.Packages.Knit)
                 local KeyHandlerService = Knit.GetService('KeyHandlerService')
                 local kickRemote = KeyHandlerService:GetKey('Kick')
 
-                -- Settings
                 local camera = Workspace.CurrentCamera
                 local smoothness = 0.4 
                 local midfieldZ = 22
-                local animationId = ]] .. animationId .. [[
+                local animationId = ']] .. animId .. [['
 
-                -- Goal X Coordinates
                 local RIGHT_X = 280 
                 local LEFT_X = 252  
 
-                -- Auto Volley Config
                 local HITBOX_SIZE = 6
                 local KICK_COOLDOWN = 0.6 
 
-                local activeMode = 0 -- 0 = Off, 1 = High (V), 2 = Low (B)
+                local activeMode = 0
                 local lastKickTime = 0
-                local POWER_VALUE = ]] .. powerValue .. [[
+                local POWER_VALUE = ]] .. (Options.AimbotPowerSlider and Options.AimbotPowerSlider.Value or 100) .. [[
 
-                -- GUI SETUP
                 local player = Players.LocalPlayer
                 local pGui = player:WaitForChild("PlayerGui")
 
@@ -239,8 +608,8 @@ AimGroup:AddToggle('AimbotToggle', {
                     POWER_VALUE = value
                     powerLabel.Text = "POWER: " .. value
                 end
+                getgenv().updatePower = updatePower
 
-                -- LOGIC FUNCTIONS
                 local function playAnimation(character)
                     local humanoid = character:FindFirstChildOfClass('Humanoid')
                     local animator = humanoid and (humanoid:FindFirstChildOfClass('Animator') or humanoid:WaitForChild('Animator'))
@@ -279,17 +648,15 @@ AimGroup:AddToggle('AimbotToggle', {
                         char.Humanoid:ChangeState(Enum.HumanoidStateType.Jumping)
                         playAnimation(char)
                         
-                        -- Reset state after successful kick
                         activeMode = 0 
                         updateGui("SYSTEM: READY", Color3.fromRGB(255, 255, 255))
                     end
                 end
 
-                -- INPUT LOGIC
                 UserInputService.InputBegan:Connect(function(input, processed)
                     if processed then return end
 
-                    if input.KeyCode == ]] .. highKey .. [[ then
+                    if input.KeyCode == Enum.KeyCode.V then
                         if activeMode == 1 then 
                             activeMode = 0 
                             updateGui("SYSTEM: READY", Color3.fromRGB(255, 255, 255))
@@ -297,7 +664,7 @@ AimGroup:AddToggle('AimbotToggle', {
                             activeMode = 1 
                             updateGui("MODE: HIGH (AUTO-VOLLEY)", Color3.fromRGB(0, 255, 0))
                         end
-                    elseif input.KeyCode == ]] .. lowKey .. [[ then
+                    elseif input.KeyCode == Enum.KeyCode.B then
                         if activeMode == 2 then 
                             activeMode = 0 
                             updateGui("SYSTEM: READY", Color3.fromRGB(255, 255, 255))
@@ -308,14 +675,12 @@ AimGroup:AddToggle('AimbotToggle', {
                     end
                 end)
 
-                -- UPDATE LOOP
                 RunService.RenderStepped:Connect(function()
                     local char = player.Character
                     local root = char and char:FindFirstChild("HumanoidRootPart")
                     local humanoid = char and char:FindFirstChildOfClass("Humanoid")
                     if not root or not humanoid then return end
 
-                    -- Handle Camera Zoom/Lock
                     if activeMode ~= 0 then
                         local currentTargetX = getTargetX(humanoid)
                         local baseTargetY = (activeMode == 1) and 19.80 or 9.68
@@ -323,18 +688,15 @@ AimGroup:AddToggle('AimbotToggle', {
                         
                         local finalTarget = Vector3.new(currentTargetX, baseTargetY, targetZ)
                         
-                        -- High Mode Height Scaling
                         if activeMode == 1 then
                             local distance = (root.Position - finalTarget).Magnitude
                             local heightOffset = (distance / 40) + (distance^2 / 4000)
                             finalTarget = Vector3.new(finalTarget.X, baseTargetY + heightOffset, targetZ)
                         end
                         
-                        -- Camera Zoom (Snapping to Target)
                         local targetCF = CFrame.lookAt(camera.CFrame.Position, finalTarget)
                         camera.CFrame = camera.CFrame:Lerp(targetCF, smoothness)
 
-                        -- Auto-Volley Proximity Logic
                         local ballFolder = Workspace:FindFirstChild('Temp')
                         local ball = ballFolder and ballFolder:FindFirstChild('Ball')
                         
@@ -346,16 +708,13 @@ AimGroup:AddToggle('AimbotToggle', {
                         end
                     end
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local highKeyText = Options.AimbotHighKeybind and Options.AimbotHighKeybind.Value or 'V'
-local lowKeyText = Options.AimbotLowKeybind and Options.AimbotLowKeybind.Value or 'B'
-AimGroup:AddLabel('High Mode: ' .. highKeyText)
-AimGroup:AddLabel('Low Mode: ' .. lowKeyText)
+AimGroup:AddLabel('High Mode: V')
+AimGroup:AddLabel('Low Mode: B')
 AimGroup:AddSlider('AimbotPowerSlider', {
     Text = 'Kick Power',
     Default = 100,
@@ -373,191 +732,14 @@ AimGroup:AddSlider('AimbotPowerSlider', {
     end
 })
 
--- Aimbot V2 Group
-local AimbotV2Group = Tabs.Main:AddLeftGroupbox('Aimbot V2')
-AimbotV2Group:AddToggle('AimbotV2Toggle', {
-    Text = 'Enable Aimbot V2',
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            local rangeValue = Options.AimbotV2RangeSlider and Options.AimbotV2RangeSlider.Value or 7
-            local cooldownValue = Options.AimbotV2CooldownSlider and Options.AimbotV2CooldownSlider.Value or 1
-            local powerValue = Options.AimbotV2PowerSlider and Options.AimbotV2PowerSlider.Value or 140
-            local topKey = getKeybindEnum(Options.AimbotV2TopKeybind) or 'Enum.KeyCode.One'
-            local bottomKey = getKeybindEnum(Options.AimbotV2BottomKeybind) or 'Enum.KeyCode.Two'
-            
-            local script = [[
-                -- // Auto Top Bins Standalone //
-                local Players = game:GetService("Players")
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local Workspace = game:GetService("Workspace")
-                local RunService = game:GetService("RunService")
-                local UserInputService = game:GetService("UserInputService")
-
-                local player = Players.LocalPlayer
-                local Knit = require(ReplicatedStorage.Packages.Knit)
-                local KeyHandlerService = Knit.GetService("KeyHandlerService")
-                local kickRemote = KeyHandlerService:GetKey("Kick")
-
-                -- Settings
-                local FIRE_RANGE = ]] .. rangeValue .. [[
-                local COOLDOWN = ]] .. cooldownValue .. [[
-
-                -- State
-                local topEnabled = false
-                local bottomEnabled = false
-                local lastFire = 0
-
-                --------------------------------------------------
-                -- UI INDICATOR
-                --------------------------------------------------
-                local gui = Instance.new("ScreenGui", player:WaitForChild("PlayerGui"))
-                gui.Name = "AutoBinsIndicator"
-
-                local function mkLabel(y, text)
-                    local l = Instance.new("TextLabel")
-                    l.Parent = gui
-                    l.Size = UDim2.new(0, 120, 0, 30)
-                    l.Position = UDim2.new(1, -130, 0, y)
-                    l.BackgroundTransparency = 0.5
-                    l.BackgroundColor3 = Color3.new(0, 0, 0)
-                    l.TextColor3 = Color3.new(1, 1, 1)
-                    l.TextScaled = true
-                    l.Font = Enum.Font.SourceSansBold
-                    l.Text = text
-                    return l
-                end
-
-                local topLbl = mkLabel(10, "TOP OFF")
-                local botLbl = mkLabel(45, "BOT OFF")
-
-                local function updateUI()
-                    topLbl.Text = topEnabled and "TOP ON" or "TOP OFF"
-                    topLbl.TextColor3 = topEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-                    
-                    botLbl.Text = bottomEnabled and "BOT ON" or "BOT OFF"
-                    botLbl.TextColor3 = bottomEnabled and Color3.fromRGB(0, 255, 0) or Color3.fromRGB(255, 0, 0)
-                end
-
-                --------------------------------------------------
-                -- LOGIC
-                --------------------------------------------------
-                local function getBall()
-                    local temp = Workspace:FindFirstChild("Temp")
-                    return temp and temp:FindFirstChild("Ball")
-                end
-
-                local function getField()
-                    for _, v in ipairs(Workspace:GetDescendants()) do
-                        if v.Name == "Field" and v:FindFirstChild("GoalboxHome") then return v end
-                    end
-                end
-
-                local function getTarget(parts)
-                    local cam = Workspace.CurrentCamera
-                    local best, bestScore
-                    for _, p in ipairs(parts) do
-                        if p and p:IsA("BasePart") then
-                            local dir = (p.Position - cam.CFrame.Position).Unit
-                            local score = cam.CFrame.LookVector:Dot(dir)
-                            if not bestScore or score > bestScore then
-                                bestScore = score
-                                best = p
-                            end
-                        end
-                    end
-                    return best
-                end
-
-                local function fire(target)
-                    if tick() - lastFire < COOLDOWN then return end
-                    lastFire = tick()
-
-                    local ball = getBall()
-                    local char = player.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    local hum = char and char:FindFirstChildOfClass("Humanoid")
-                    if not ball or not hrp or not hum or not target then return end
-
-                    -- Aim & Shoot
-                    Workspace.CurrentCamera.CFrame = CFrame.new(Workspace.CurrentCamera.CFrame.Position, target.Position)
-                    hrp.CFrame = CFrame.new(hrp.Position, Vector3.new(target.Position.X, hrp.Position.Y, target.Position.Z))
-
-                    local side = hrp.CFrame.RightVector:Dot(ball.Position - hrp.Position) > 0 and "Right" or "Left"
-                    kickRemote:FireServer((target.Position - hrp.Position).Unit * 200, ball, false, true, ]] .. powerValue .. [[, side, hrp.CFrame, {Enum.KeyCode.One}, false, false)
-                    hum:ChangeState(Enum.HumanoidStateType.Jumping)
-                end
-
-                -- Keybind Listener
-                UserInputService.InputBegan:Connect(function(input, gp)
-                    if gp then return end
-                    if input.KeyCode == ]] .. topKey .. [[ then
-                        topEnabled = not topEnabled
-                        bottomEnabled = false
-                    elseif input.KeyCode == ]] .. bottomKey .. [[ then
-                        bottomEnabled = not bottomEnabled
-                        topEnabled = false
-                    end
-                    updateUI()
-                end)
-
-                -- Loop
-                RunService.RenderStepped:Connect(function()
-                    if not topEnabled and not bottomEnabled then return end
-                    local ball = getBall()
-                    local hrp = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-                    if ball and hrp and (ball.Position - hrp.Position).Magnitude <= FIRE_RANGE then
-                        local f = getField()
-                        if not f then return end
-                        if topEnabled then
-                            fire(getTarget({f.GoalboxHome["TOP RIGHT"], f.GoalboxHome["TOP LEFT"], f.GoalboxAway["TOP RIGHT"], f.GoalboxAway["TOP LEFT"]}))
-                        else
-                            fire(getTarget({f.GoalboxHome["BOTTOM RIGHT"], f.GoalboxHome["BOTTOM LEFT"], f.GoalboxAway["BOTTOM RIGHT"], f.GoalboxAway["BOTTOM LEFT"]}))
-                        end
-                    end
-                end)
-            ]]
-            loadstring(script)()
-        end
-    end
-})
-
-AimbotV2Group:AddSlider('AimbotV2RangeSlider', {
-    Text = 'Range',
-    Default = 7,
-    Min = 1,
-    Max = 20,
-    Rounding = 0,
-})
-
-AimbotV2Group:AddSlider('AimbotV2CooldownSlider', {
-    Text = 'Cooldown',
-    Default = 1,
-    Min = 0.1,
-    Max = 5,
-    Rounding = 1,
-})
-
-AimbotV2Group:AddSlider('AimbotV2PowerSlider', {
-    Text = 'Power',
-    Default = 140,
-    Min = 100,
-    Max = 999,
-    Rounding = 0,
-})
-
 local PreholdGroup = Tabs.Main:AddLeftGroupbox('Auto Prehold')
 PreholdGroup:AddToggle('PreholdToggle', {
     Text = 'Enable Auto Prehold',
     Default = false,
     Callback = function(Value)
         if Value then
-            local animationId = getAnimationID('rbxassetid://15434792076')
-            local procSize = Options.PreholdRangeSlider and Options.PreholdRangeSlider.Value or 4
-            local toggleKey = getKeybindEnum(Options.PreholdToggleKeybind) or 'Enum.KeyCode.Four'
-            local manualKey = getKeybindEnum(Options.PreholdManualKeybind) or 'Enum.KeyCode.G'
-            
-            local script = [[
+            local animId = Toggles.RinPackToggle and Toggles.RinPackToggle.Value and 'rbxassetid://139333593369314' or 'rbxassetid://15434792076'
+            loadstring([[
                 --!nocheck
                 local Players = game:GetService('Players')
                 local ReplicatedStorage = game:GetService('ReplicatedStorage')
@@ -568,19 +750,17 @@ PreholdGroup:AddToggle('PreholdToggle', {
                 local Knit = require(ReplicatedStorage.Packages.Knit)
                 local KeyHandlerService = Knit.GetService('KeyHandlerService')
 
-                -- Configuration
                 local kickRemote = KeyHandlerService:GetKey('Kick')
-                local animationId = ]] .. animationId .. [[
-                local procSize = ]] .. procSize .. [[
+                local animationId = ']] .. animId .. [['
+                local procSize = ]] .. (Options.PreholdRangeSlider and Options.PreholdRangeSlider.Value or 4) .. [[
                 local HITBOX_SIZE = procSize
-                local TOGGLE_KEY = ]] .. toggleKey .. [[
-                local MANUAL_KEY = ]] .. manualKey .. [[
+                local TOGGLE_KEY = Enum.KeyCode.Four
+                local MANUAL_KEY = Enum.KeyCode.G
 
                 local autoVolleyEnabled = false
                 local lastKickTime = 0
                 local KICK_COOLDOWN = 4
 
-                -- Visual Circle
                 local visualCircle = Instance.new("Part")
                 visualCircle.Name = "RangeVisual"
                 visualCircle.Shape = Enum.PartType.Cylinder
@@ -602,22 +782,20 @@ PreholdGroup:AddToggle('PreholdToggle', {
                     if root and scriptActive and circleVisible then
                         local timeLeft = math.max(0, (lastKickTime + KICK_COOLDOWN) - tick())
                         
-                        -- COLOR LOGIC: Red on CD, Green when Ready
                         if timeLeft > 0 then
-                            visualCircle.Color = Color3.fromRGB(255, 50, 50) -- Red
+                            visualCircle.Color = Color3.fromRGB(255, 50, 50)
                         else
-                            visualCircle.Color = Color3.fromRGB(0, 255, 100) -- Green
+                            visualCircle.Color = Color3.fromRGB(0, 255, 100)
                         end
                         
                         visualCircle.Transparency = 0.5
                         visualCircle.CFrame = root.CFrame * CFrame.new(0, -2.8, 0) * CFrame.Angles(0, 0, math.rad(90))
                         visualCircle.Size = Vector3.new(0.1, procSize * 2, procSize * 2)
                     else
-                        visualCircle.Transparency = 1 -- Hide if script off or toggle off
+                        visualCircle.Transparency = 1
                     end
                 end
 
-                -- GUI SETUP
                 local screenGui = Instance.new("ScreenGui", game.CoreGui)
                 local mainFrame = Instance.new("Frame", screenGui)
                 mainFrame.Size = UDim2.new(0, 160, 0, 110)
@@ -643,7 +821,6 @@ PreholdGroup:AddToggle('PreholdToggle', {
                 local procLabel = createLabel(UDim2.new(0,0,0.5,0), "RANGE (N-M): " .. procSize, Color3.new(1, 0.8, 0.2))
                 local visualLabel = createLabel(UDim2.new(0,0,0.75,0), "CIRCLE (L): ON", Color3.new(0.7, 0.7, 0.7))
 
-                -- Play kick animation function
                 local function playAnimation(character)
                     local humanoid = character:FindFirstChildOfClass('Humanoid')
                     local animator = humanoid and (humanoid:FindFirstChildOfClass('Animator') or humanoid:WaitForChild('Animator'))
@@ -656,7 +833,6 @@ PreholdGroup:AddToggle('PreholdToggle', {
                     end
                 end
 
-                -- Logic to execute the kick
                 local function performKick()
                     local player = Players.LocalPlayer
                     local character = player.Character
@@ -678,17 +854,10 @@ PreholdGroup:AddToggle('PreholdToggle', {
                         local args = { direction, ball, false, true, 100, 'Right', root.CFrame, {}, false, false }
 
                         kickRemote:FireServer(table.unpack(args))
-
-                        local animator = humanoid and (humanoid:FindFirstChildOfClass('Animator') or humanoid:WaitForChild('Animator'))
-                        if animator then
-                            local anim = Instance.new('Animation')
-                            anim.AnimationId = animationId
-                            animator:LoadAnimation(anim):Play()
-                        end
+                        playAnimation(character)
                     end
                 end
 
-                -- Toggle and Manual Input
                 UserInputService.InputBegan:Connect(function(input, gp)
                     if gp then return end
                     
@@ -696,13 +865,12 @@ PreholdGroup:AddToggle('PreholdToggle', {
                         autoVolleyEnabled = not autoVolleyEnabled
                         autoLabel.Text = "AUTO (1): " .. (autoVolleyEnabled and "ON" or "OFF")
                         autoLabel.TextColor3 = autoVolleyEnabled and Color3.new(0.3, 1, 0.3) or Color3.new(1, 0.3, 0.3)
-                        print("Auto Volley: " .. (autoVolleyEnabled and "ENABLED" or "DISABLED"))
                     elseif input.KeyCode == MANUAL_KEY then
                         performKick()
                     elseif input.KeyCode == Enum.KeyCode.Zero then
                         scriptActive = not scriptActive
                         mainFrame.Visible = scriptActive
-                    elseif input.KeyCode == Enum.KeyCode.L then -- Toggle Circle Visibility
+                    elseif input.KeyCode == Enum.KeyCode.L then
                         circleVisible = not circleVisible
                         visualLabel.Text = "CIRCLE (L): " .. (circleVisible and "ON" or "OFF")
                     elseif input.KeyCode == Enum.KeyCode.M then
@@ -714,7 +882,6 @@ PreholdGroup:AddToggle('PreholdToggle', {
                     end
                 end)
 
-                -- Update loop
                 RunService.RenderStepped:Connect(function()
                     updateCircle()
                     
@@ -734,22 +901,20 @@ PreholdGroup:AddToggle('PreholdToggle', {
                         performKick()
                     end
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local toggleKeyText = Options.PreholdToggleKeybind and Options.PreholdToggleKeybind.Value or '4'
-local manualKeyText = Options.PreholdManualKeybind and Options.PreholdManualKeybind.Value or 'G'
-PreholdGroup:AddLabel('Toggle: ' .. toggleKeyText)
-PreholdGroup:AddLabel('Manual: ' .. manualKeyText)
+PreholdGroup:AddLabel('Toggle: 4')
+PreholdGroup:AddLabel('Manual: G')
 PreholdGroup:AddSlider('PreholdRangeSlider', {
     Text = 'Range',
     Default = 4,
     Min = 1,
     Max = 15,
     Rounding = 1,
+    Callback = function(Value) end
 })
 
 local DoubleTapGroup = Tabs.Main:AddLeftGroupbox('Double Tap')
@@ -758,10 +923,9 @@ DoubleTapGroup:AddToggle('DoubleTapToggle', {
     Default = false,
     Callback = function(Value)
         if Value then
-            local doubleTapKey = getKeybindEnum(Options.DoubleTapKeybind) or 'Enum.KeyCode.X'
-            local chipAnimId = '"rbxassetid://15134077897"' -- Fixed animation ID (not affected by Rin Pack)
-            
-            local script = [[
+            local chipAnim = Toggles.RinPackToggle and Toggles.RinPackToggle.Value and 'rbxassetid://139333593369314' or 'rbxassetid://15134077897'
+            local dtapAnim = Toggles.RinPackToggle and Toggles.RinPackToggle.Value and 'rbxassetid://139333593369314' or 'rbxassetid://16859143160'
+            loadstring([[
                 local Players = game:GetService('Players')
                 local ReplicatedStorage = game:GetService('ReplicatedStorage')
                 local UserInputService = game:GetService('UserInputService')
@@ -777,15 +941,15 @@ DoubleTapGroup:AddToggle('DoubleTapToggle', {
                 local CHIP_FORCE = 37.63837890769355
                 local CHIP_VECTOR = Vector3.new(33.2738037109375, 27.290828704833984, -27.609731674194336)
                 local CHIP_CFRAME = CFrame.new(216.23738, 12.676937, -96.496208, 0.6732608,0,-0.7394051,0,1,0,0.7394051,0,0.6732608)
-                local CHIP_ANIM_ID = ]] .. chipAnimId .. [[
+                local CHIP_ANIM_ID = ']] .. chipAnim .. [['
 
                 local DTAP_FORCE = 27.13375797914341
                 local DTAP_VECTOR = Vector3.new(14.2802124, 21.8535023, 32.024025)
-                local DTAP_ANIM_ID = 'rbxassetid://16859143160'
+                local DTAP_ANIM_ID = ']] .. dtapAnim .. [['
                 
                 local lastActivation = 0
                 local cooldown = 1.5
-                local doubleTapKey = ]] .. doubleTapKey .. [[
+                local doubleTapKey = Enum.KeyCode.X
                 local doubleTapEnabled = true
 
                 local function getBall()
@@ -837,25 +1001,20 @@ DoubleTapGroup:AddToggle('DoubleTapToggle', {
                     playAnimation(DTAP_ANIM_ID)
                     TapInRemote:FireServer(ball, false, DTAP_FORCE, alignVector(DTAP_VECTOR), 'Right')
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local doubleTapKeyText = Options.DoubleTapKeybind and Options.DoubleTapKeybind.Value or 'X'
-DoubleTapGroup:AddLabel('Keybind: ' .. doubleTapKeyText)
+DoubleTapGroup:AddLabel('Keybind: X')
 
--- NEW AUTO M2 FEATURE
 local AutoM2Group = Tabs.Main:AddLeftGroupbox('Auto M2')
 AutoM2Group:AddToggle('AutoM2Toggle', {
     Text = 'Enable Auto M2',
     Default = false,
     Callback = function(Value)
         if Value then
-            local autoM2Key = getKeybindEnum(Options.AutoM2Keybind) or 'Enum.KeyCode.Three'
-            
-            local script = [[
+            loadstring([[
                 local ReplicatedStorage = game:GetService("ReplicatedStorage")
                 local Workspace = game:GetService("Workspace")
                 local UserInputService = game:GetService("UserInputService")
@@ -874,9 +1033,6 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                 local m2Interval = 0.2 
                 local procSize = 4.5   
 
-                ----------------------------------------------------------------
-                -- VISUAL CIRCLE
-                ----------------------------------------------------------------
                 local visualCircle = Instance.new("Part")
                 visualCircle.Name = "M2RangeVisual"
                 visualCircle.Shape = Enum.PartType.Cylinder
@@ -895,9 +1051,9 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                     if root and scriptActive and autoM2Enabled then
                         visualCircle.Transparency = 0.5
                         if isBursting then
-                            visualCircle.Color = Color3.fromRGB(255, 50, 50) -- Red during burst
+                            visualCircle.Color = Color3.fromRGB(255, 50, 50)
                         else
-                            visualCircle.Color = Color3.fromRGB(255, 255, 255) -- White when ready
+                            visualCircle.Color = Color3.fromRGB(255, 255, 255)
                         end
                         
                         visualCircle.CFrame = root.CFrame * CFrame.new(0, -2.8, 0) * CFrame.Angles(0, 0, math.rad(90))
@@ -907,9 +1063,6 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                     end
                 end
 
-                ----------------------------------------------------------------
-                -- GUI SETUP
-                ----------------------------------------------------------------
                 local screenGui = Instance.new("ScreenGui", CoreGui)
                 local mainFrame = Instance.new("Frame", screenGui)
                 mainFrame.Size = UDim2.new(0, 220, 0, 100)
@@ -934,16 +1087,11 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                 local speedLabel = makeLabel("SPEED: 0.20s ([ / ])", UDim2.new(0,0,0.4,0), UDim2.new(1,0,0.3,0))
                 local rangeLabel = makeLabel("RANGE: 4.5 (N / M)", UDim2.new(0,0,0.7,0), UDim2.new(1,0,0.3,0))
 
-                ----------------------------------------------------------------
-                -- UPDATED TIMING LOGIC
-                ----------------------------------------------------------------
-
-                -- Trigger: 0.2s delay -> M2 -> 0.2s delay -> M2
                 local function runPostStealBurst()
                     if isBursting then return end
                     isBursting = true
                     
-                    task.wait(0.2) -- First delay after steal highlight
+                    task.wait(0.2)
                     
                     for i = 1, 2 do
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 1, true, game, 0)
@@ -951,7 +1099,7 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                         VirtualInputManager:SendMouseButtonEvent(0, 0, 1, false, game, 0)
                         
                         if i < 2 then 
-                            task.wait(0.2) -- Interval between the two M2s
+                            task.wait(0.2)
                         end
                     end
                     
@@ -970,7 +1118,6 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                 local function handleAutoM2(ball, highlight)
                     if not scriptActive or not autoM2Enabled then return end
 
-                    -- Detect Possession
                     if highlight and not lastHighlightState then
                         lastHighlightState = true
                         task.spawn(runPostStealBurst)
@@ -978,7 +1125,6 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                         lastHighlightState = false
                     end
 
-                    -- Skip regular spam if bursting, ball is high, or already have possession
                     if isBursting or highlight or isBallInAir(ball) then return end
 
                     local root = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
@@ -992,9 +1138,6 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                     end
                 end
 
-                ----------------------------------------------------------------
-                -- RUNTIME
-                ----------------------------------------------------------------
                 RunService.RenderStepped:Connect(function()
                     updateCircle()
                     local ball = Workspace:FindFirstChild("Temp") and Workspace.Temp:FindFirstChild("Ball") or Workspace:FindFirstChild("Ball")
@@ -1005,7 +1148,7 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                 UserInputService.InputBegan:Connect(function(input, gp)
                     if gp then return end
                     
-                    if input.KeyCode == ]] .. autoM2Key .. [[ then
+                    if input.KeyCode == Enum.KeyCode.Three then
                         autoM2Enabled = not autoM2Enabled
                         statusLabel.Text = autoM2Enabled and "AUTO M2: ON" or "AUTO M2: OFF"
                         statusLabel.TextColor3 = autoM2Enabled and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 60, 60)
@@ -1031,251 +1174,15 @@ AutoM2Group:AddToggle('AutoM2Toggle', {
                         rangeLabel.Text = "RANGE: " .. procSize .. " (N / M)"
                     end
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local autoM2KeyText = Options.AutoM2Keybind and Options.AutoM2Keybind.Value or '3'
-AutoM2Group:AddLabel('Toggle: ' .. autoM2KeyText)
+AutoM2Group:AddLabel('Toggle: 3')
 AutoM2Group:AddLabel('Speed: [ / ]')
 AutoM2Group:AddLabel('Range: N / M')
 AutoM2Group:AddLabel('Disable: 0')
-
--- NEW FEATURES GROUP
-local NewFeaturesGroup = Tabs.Main:AddLeftGroupbox('New Features')
-
--- Phys Reach Feature
-NewFeaturesGroup:AddToggle('PhysReachToggle', {
-    Text = 'Enable Phys Reach',
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            local physReachKey = getKeybindEnum(Options.PhysReachKeybind) or 'Enum.KeyCode.R'
-            local animationId = '"rbxassetid://15417325996"' -- Fixed animation ID (not affected by Rin Pack)
-            
-            local script = [[
-                local Players = game:GetService("Players")
-                local ReplicatedStorage = game:GetService("ReplicatedStorage")
-                local UserInputService = game:GetService("UserInputService")
-                local Workspace = game:GetService("Workspace")
-
-
-                local Knit = require(ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"))
-                local KeyHandlerService = Knit.GetService("KeyHandlerService")
-
-
-                local shoveRemote = KeyHandlerService:GetKey("ShoveCheck") 
-
-                local cooldownTime = 15
-                local lastUsedTime = 0
-                local animationId = ]] .. animationId .. [[
-
-
-                local function getNearestPlayer()
-                    local localPlayer = Players.LocalPlayer
-                    local character = localPlayer.Character
-                    if not character or not character:FindFirstChild("HumanoidRootPart") then return nil
-
-                    local nearestPlayer = nil
-                    local shortestDistance = math.huge
-
-                    for _, player in ipairs(Players:GetPlayers()) do
-                        if player ~= localPlayer and player.Character and player.Character:FindFirstChild("HumanoidRootPart") then
-                            local dist = (character.HumanoidRootPart.Position - player.Character.HumanoidRootPart.Position).Magnitude
-                            
-                            if dist < shortestDistance then
-                                shortestDistance = dist
-                                nearestPlayer = player
-                            end
-                        end
-                    end
-                    return nearestPlayer
-                end
-
-
-                local function playShoveAnimation()
-                    local character = Players.LocalPlayer.Character
-                    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                    local animator = humanoid and (humanoid:FindFirstChildOfClass("Animator") or humanoid:WaitForChild("Animator"))
-                    
-                    if animator then
-                        local anim = Instance.new("Animation")
-                        anim.AnimationId = animationId
-                        local track = animator:LoadAnimation(anim)
-                        track:Play()
-                    end
-                end
-
-
-                local function executeShove()
-                    local currentTime = tick()
-                    if currentTime - lastUsedTime < cooldownTime then return end
-
-                    
-                    local ball = Workspace:FindFirstChild("Temp") and Workspace.Temp:FindFirstChild("Ball")
-                    if not (ball and ball:FindFirstChild("PossessionHighlight")) then return end
-
-                    local targetPlayer = getNearestPlayer()
-                    if targetPlayer then
-                        
-                        local container = Workspace:FindFirstChild("CharacterContainer")
-                        local targetChar = container and container:FindFirstChild(targetPlayer.Name)
-
-                        if targetChar then
-                            
-                            shoveRemote:FireServer(targetChar)
-                            
-                            
-                            playShoveAnimation()
-                            lastUsedTime = currentTime
-                            print("ShoveCheck fired at: " .. targetPlayer.Name)
-                        end
-                    end
-                end
-
-
-                UserInputService.InputBegan:Connect(function(input, processed)
-                    if processed then return end
-                    
-                    if input.KeyCode == ]] .. physReachKey .. [[ then
-                        executeShove()
-                    end
-                end)
-            ]]
-            loadstring(script)()
-        end
-    end
-})
-
-local physReachKeyText = Options.PhysReachKeybind and Options.PhysReachKeybind.Value or 'R'
-NewFeaturesGroup:AddLabel('Phys Reach Key: ' .. physReachKeyText)
-
--- Auto Flick Feature
-NewFeaturesGroup:AddToggle('AutoFlickToggle', {
-    Text = 'Enable Auto Flick',
-    Default = false,
-    Callback = function(Value)
-        if Value then
-            local autoFlickKey = getKeybindEnum(Options.AutoFlickKeybind) or 'Enum.KeyCode.Five'
-            local chipAnimId = '"rbxassetid://15134077897"' -- Fixed animation ID (not affected by Rin Pack)
-            local powerValue = Options.AutoFlickPowerSlider and Options.AutoFlickPowerSlider.Value or 27.13
-            local xValue = Options.AutoFlickXSlider and Options.AutoFlickXSlider.Value or 14.28
-            local yValue = Options.AutoFlickYSlider and Options.AutoFlickYSlider.Value or 21.85
-            local zValue = Options.AutoFlickZSlider and Options.AutoFlickZSlider.Value or 32.02
-            
-            local script = [[
-                local Players = game:GetService('Players')
-                local ReplicatedStorage = game:GetService('ReplicatedStorage')
-                local UserInputService = game:GetService('UserInputService')
-                local Knit = require(ReplicatedStorage.Packages.Knit)
-
-                local KeyHandlerService = Knit.GetService('KeyHandlerService')
-                local TapInRemote = KeyHandlerService:GetKey('TapInHit')
-
-                local player = Players.LocalPlayer
-
-                -- Swapped Animation ID
-                local CHIP_ANIM_ID = ]] .. chipAnimId .. [[
-
-                -- Using 2nd chip data
-                local DTAP_FORCE = ]] .. powerValue .. [[
-                local DTAP_VECTOR = Vector3.new(]] .. xValue .. [[, ]] .. yValue .. [[, ]] .. zValue .. [[)
-
-                local function getBall()
-                    local folder = workspace:FindFirstChild('Temp')
-                    return folder and folder:FindFirstChild('Ball')
-                end
-
-                local function playAnimation(id)
-                    local char = player.Character
-                    if not char then return end
-                    local hum = char:FindFirstChildOfClass('Humanoid')
-                    local animator = hum and (hum:FindFirstChildOfClass('Animator') or Instance.new('Animator', hum))
-                    if not animator then return end
-                    
-                    local anim = Instance.new('Animation')
-                    anim.AnimationId = id
-                    local track = animator:LoadAnimation(anim)
-                    track:Play()
-                end
-
-                -- Calculation for direction + Character Flicking logic
-                local function getDirectionAndFlick()
-                    local char = player.Character
-                    local hrp = char and char:FindFirstChild("HumanoidRootPart")
-                    local hum = char and char:FindFirstChild("Humanoid")
-                    
-                    if not hrp or not hum then return nil end
-                    
-                    local moveDir = hum.MoveDirection
-                    
-                    -- If standing still, use Camera direction
-                    if moveDir.Magnitude == 0 then
-                        local camDir = workspace.CurrentCamera.CFrame.LookVector
-                        moveDir = Vector3.new(camDir.X, 0, camDir.Z).Unit
-                    end
-                    
-                    -- FLICK: Rotate character to face the direction of the chip
-                    hrp.CFrame = CFrame.new(hrp.Position, hrp.Position + moveDir)
-                    
-                    local horizontalMag = Vector3.new(DTAP_VECTOR.X, 0, DTAP_VECTOR.Z).Magnitude
-                    return Vector3.new(moveDir.X * horizontalMag, DTAP_VECTOR.Y, moveDir.Z * horizontalMag)
-                end
-
-                UserInputService.InputBegan:Connect(function(input, gp)
-                    if gp or input.KeyCode ~= ]] .. autoFlickKey .. [[ then return end
-                    
-                    local ball = getBall()
-                    if not ball then return end
-
-                    local finalVector = getDirectionAndFlick()
-                    if not finalVector then return end
-
-                    playAnimation(CHIP_ANIM_ID)
-                    TapInRemote:FireServer(ball, false, DTAP_FORCE, finalVector, 'Right')
-                end)
-            ]]
-            loadstring(script)()
-        end
-    end
-})
-
-NewFeaturesGroup:AddSlider('AutoFlickPowerSlider', {
-    Text = 'Flick Power',
-    Default = 27.13,
-    Min = 10,
-    Max = 50,
-    Rounding = 2,
-})
-
-NewFeaturesGroup:AddSlider('AutoFlickXSlider', {
-    Text = 'Flick X Force',
-    Default = 14.28,
-    Min = 5,
-    Max = 50,
-    Rounding = 2,
-})
-
-NewFeaturesGroup:AddSlider('AutoFlickYSlider', {
-    Text = 'Flick Y Force',
-    Default = 21.85,
-    Min = 5,
-    Max = 50,
-    Rounding = 2,
-})
-
-NewFeaturesGroup:AddSlider('AutoFlickZSlider', {
-    Text = 'Flick Z Force',
-    Default = 32.02,
-    Min = 5,
-    Max = 50,
-    Rounding = 2,
-})
-
-local autoFlickKeyText = Options.AutoFlickKeybind and Options.AutoFlickKeybind.Value or '5'
-NewFeaturesGroup:AddLabel('Auto Flick Key: ' .. autoFlickKeyText)
 
 -- RIGHT SIDE GROUPS (MAIN TAB)
 local TPMossGroup = Tabs.Main:AddRightGroupbox('TP Moss')
@@ -1284,9 +1191,7 @@ TPMossGroup:AddToggle('TPMossToggle', {
     Default = false,
     Callback = function(Value)
         if Value then
-            local tpmossKey = getKeybindEnum(Options.TPMossKeybind) or 'Enum.KeyCode.Y'
-            
-            local script = [[
+            loadstring([[
                 local UserInputService = game:GetService("UserInputService")
                 local Players = game:GetService("Players")
                 local Workspace = game:GetService("Workspace")
@@ -1297,7 +1202,6 @@ TPMossGroup:AddToggle('TPMossToggle', {
                 local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
                 local head = character:WaitForChild("Head")
 
-                -- UI Setup
                 local screenGui = Instance.new("ScreenGui")
                 screenGui.Parent = player:WaitForChild("PlayerGui")
 
@@ -1311,18 +1215,16 @@ TPMossGroup:AddToggle('TPMossToggle', {
                 toggleLabel.Text = "Toggled: OFF"
                 toggleLabel.Parent = screenGui
 
-                -- Variables
                 local toggled = false
                 local labelVisible = true
                 local stepCount = 20
                 local timeStep = 0.1
                 local gravity = Vector3.new(0, -Workspace.Gravity * timeStep, 0)
 
-                -- Toggle
                 UserInputService.InputBegan:Connect(function(input, gameProcessed)
                 	if gameProcessed then return end
                 	
-                	if input.KeyCode == ]] .. tpmossKey .. [[ then
+                	if input.KeyCode == Enum.KeyCode.Y then
                 		toggled = not toggled
                 		toggleLabel.Text = toggled and "Toggled: ON" or "Toggled: OFF"
                 	elseif input.KeyCode == Enum.KeyCode.P then
@@ -1331,7 +1233,6 @@ TPMossGroup:AddToggle('TPMossToggle', {
                 	end
                 end)
 
-                -- Predict Path Function
                 local function isPlayerNearPredictedPath(ballPos, ballVel)
                 	local currentPos = ballPos
                 	local currentVel = ballVel
@@ -1349,7 +1250,6 @@ TPMossGroup:AddToggle('TPMossToggle', {
                 	return false
                 end
 
-                -- Main Loop
                 RunService.Heartbeat:Connect(function()
                 	if toggled then
                 		local tempFolder = Workspace:FindFirstChild("Temp")
@@ -1370,14 +1270,12 @@ TPMossGroup:AddToggle('TPMossToggle', {
                 		end
                 	end
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local tpmossKeyText = Options.TPMossKeybind and Options.TPMossKeybind.Value or 'Y'
-TPMossGroup:AddLabel('Keybind: ' .. tpmossKeyText)
+TPMossGroup:AddLabel('Keybind: Y')
 TPMossGroup:AddLabel('Hide UI: P')
 
 local HitboxGroup = Tabs.Main:AddRightGroupbox('Hitbox Extender')
@@ -1481,9 +1379,8 @@ HeaderGroup:AddToggle('HeaderToggle', {
     Default = false,
     Callback = function(Value)
         if Value then
-            local headerKey = getKeybindEnum(Options.AutoHeaderKeybind) or 'Enum.KeyCode.T'
-            
-            local script = [[
+            local animId = Toggles.RinPackToggle and Toggles.RinPackToggle.Value and 'rbxassetid://139333593369314' or 'rbxassetid://15684799301'
+            loadstring([[
                 --!nocheck
                 local Players = game:GetService("Players")
                 local RunService = game:GetService("RunService")
@@ -1491,8 +1388,8 @@ HeaderGroup:AddToggle('HeaderToggle', {
                 local ReplicatedStorage = game:GetService("ReplicatedStorage")
                 local Workspace = game:GetService("Workspace")
                 local player = Players.LocalPlayer
-                local AutoHeaderKey = ]] .. headerKey .. [[
-                local HEADER_ANIM_ID = "rbxassetid://15684799301"
+                local AutoHeaderKey = Enum.KeyCode.T
+                local HEADER_ANIM_ID = "]] .. animId .. [["
                 local slipConeSize = Vector3.new(9, 5, 9)
                 local autoHeaderActive = false
                 local debounce = false
@@ -1575,14 +1472,12 @@ HeaderGroup:AddToggle('HeaderToggle', {
                         debounce = false
                     end)
                 end)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local headerKeyText = Options.AutoHeaderKeybind and Options.AutoHeaderKeybind.Value or 'T'
-HeaderGroup:AddLabel('Keybind: ' .. headerKeyText)
+HeaderGroup:AddLabel('Keybind: T')
 
 local AutoGkGroup = Tabs.Main:AddRightGroupbox('Auto GK')
 AutoGkGroup:AddToggle('AutoGkToggle', {
@@ -1590,9 +1485,7 @@ AutoGkGroup:AddToggle('AutoGkToggle', {
     Default = false,
     Callback = function(Value)
         if Value then
-            local gkKey = getKeybindEnum(Options.AutoGkKeybind) or 'Enum.KeyCode.One'
-            
-            local script = [[
+            loadstring([[
                 local RunService = game:GetService("RunService")
                 local Workspace = game:GetService("Workspace")
                 local Players = game:GetService("Players")
@@ -1604,7 +1497,7 @@ AutoGkGroup:AddToggle('AutoGkToggle', {
                 local CONFIG = {
                 	Enabled = true,
                 	ShowVisuals = false,
-                	ActivationKey = ]] .. gkKey .. [[,
+                	ActivationKey = Enum.KeyCode.One,
                 	MinBallVelocity = 10,
                 	DelayMidDive  = 0.02,
                 	DelayHighDive = 0.13,
@@ -1714,7 +1607,7 @@ AutoGkGroup:AddToggle('AutoGkToggle', {
                 		if simPos.Y < CONFIG.BallRadius then
                 			simPos = Vector3.new(simPos.X, CONFIG.BallRadius, simPos.Z)
                 			simVel = Vector3.new(simVel.X, -simVel.Y * CONFIG.BounceElasticity, simVel.Z)
-                	 end
+                		end
                 		if CONFIG.ShowVisuals and i % 3 == 0 then
                 			DrawPoint(simPos, Color3.new(1,0,0), 0.2)
                 		end
@@ -1757,14 +1650,12 @@ AutoGkGroup:AddToggle('AutoGkToggle', {
                 	end
                 end
                 RunService.RenderStepped:Connect(Update)
-            ]]
-            loadstring(script)()
+            ]])()
         end
     end
 })
 
-local gkKeyText = Options.AutoGkKeybind and Options.AutoGkKeybind.Value or '1'
-AutoGkGroup:AddLabel('Keybind: ' .. gkKeyText)
+AutoGkGroup:AddLabel('Keybind: 1')
 
 local ZoomGroup = Tabs.Main:AddRightGroupbox('Zoom')
 ZoomGroup:AddToggle('ZoomToggle', {
@@ -1787,105 +1678,28 @@ ZoomGroup:AddToggle('ZoomToggle', {
     end
 })
 
--- NEW BALL TRAIL GROUP
-local BallTrailGroup = Tabs.Main:AddRightGroupbox('Ball Trail')
-BallTrailGroup:AddToggle('BallTrailToggle', {
-    Text = 'Enable Custom Trail',
+-- PACK TAB (RIN PACK)
+local PackGroup = Tabs.Pack:AddLeftGroupbox('Rin Animation Pack')
+PackGroup:AddToggle('RinPackToggle', {
+    Text = 'Enable Rin Animation Pack',
     Default = false,
     Callback = function(Value)
         if Value then
-            local color1 = Options.BallTrailColor1 and Options.BallTrailColor1.Value or Color3.new(0, 0.712, 1)
-            local color2 = Options.BallTrailColor2 and Options.BallTrailColor2.Value or Color3.new(1, 0, 0)
-            local mode = Options.BallTrailMode and Options.BallTrailMode.Value or 'Single Color'
-            
-            local script = [[
-                local Workspace = game:GetService("Workspace")
-                local RunService = game:GetService("RunService")
-                
-                local function updateTrail()
-                    local ball = Workspace:FindFirstChild("Temp") and Workspace.Temp:FindFirstChild("Ball")
-                    if not ball then return end
-                    
-                    -- Update IFrameTrail
-                    local iframeTrail = ball:FindFirstChild("IFrameTrail")
-                    if iframeTrail then
-                        ]] .. (mode == 'Gradient' and [[
-                        iframeTrail.Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.new(]] .. color1.R .. [[, ]] .. color1.G .. [[, ]] .. color1.B .. [[)),
-                            ColorSequenceKeypoint.new(1, Color3.new(]] .. color2.R .. [[, ]] .. color2.G .. [[, ]] .. color2.B .. [[))
-                        }
-                        ]] or [[
-                        iframeTrail.Color = ColorSequence.new(Color3.new(]] .. color1.R .. [[, ]] .. color1.G .. [[, ]] .. color1.B .. [[))
-                        ]]) .. [[
-                    end
-                    
-                    -- Update regular Trail
-                    local regularTrail = ball:FindFirstChild("Trail")
-                    if regularTrail then
-                        ]] .. (mode == 'Gradient' and [[
-                        regularTrail.Color = ColorSequence.new{
-                            ColorSequenceKeypoint.new(0, Color3.new(]] .. color1.R .. [[, ]] .. color1.G .. [[, ]] .. color1.B .. [[)),
-                            ColorSequenceKeypoint.new(1, Color3.new(]] .. color2.R .. [[, ]] .. color2.G .. [[, ]] .. color2.B .. [[))
-                        }
-                        ]] or [[
-                        regularTrail.Color = ColorSequence.new(Color3.new(]] .. color1.R .. [[, ]] .. color1.G .. [[, ]] .. color1.B .. [[))
-                        ]]) .. [[
-                    end
-                end
-                
-                -- Initial update
-                updateTrail()
-                
-                -- Monitor for ball changes
-                local tempFolder = Workspace:WaitForChild("Temp")
-                if tempFolder then
-                    tempFolder.ChildAdded:Connect(function(child)
-                        if child.Name == "Ball" then
-                            task.wait(0.1)
-                            updateTrail()
-                        end
-                    end)
-                end
-                
-                -- Continuous update for safety
-                RunService.Heartbeat:Connect(updateTrail)
-            ]]
-            loadstring(script)()
+            Library:Notify('Rin Animation Pack Enabled - All animations updated', 3)
+        else
+            Library:Notify('Rin Animation Pack Disabled - Default animations restored', 3)
         end
     end
 })
 
-BallTrailGroup:AddDropdown('BallTrailMode', {
-    Values = {'Single Color', 'Gradient'},
-    Default = 'Single Color',
-    Multi = false,
-    Text = 'Trail Type',
-})
-
-BallTrailGroup:AddColorPicker('BallTrailColor1', {
-    Default = Color3.new(0, 0.712, 1),
-    Title = 'Primary Color',
-})
-
-BallTrailGroup:AddColorPicker('BallTrailColor2', {
-    Default = Color3.new(1, 0, 0),
-    Title = 'Secondary Color',
-})
-
-BallTrailGroup:AddLabel('Controls both IFrameTrail and Trail')
-
--- RIN PACK GROUP
-local RinPackGroup = Tabs.Main:AddRightGroupbox('Animation Pack')
-RinPackGroup:AddToggle('RinPackToggle', {
-    Text = 'Enable Rin Pack',
-    Default = false,
-    Callback = function(Value)
-        Library:Notify('Rin Pack ' .. (Value and 'enabled' or 'disabled'), 3)
-    end
-})
-
-RinPackGroup:AddLabel('Replaces Aimbot V1 and Prehold animations')
-RinPackGroup:AddLabel('Does NOT affect: Double Tap, Phys Reach, Auto Flick')
+PackGroup:AddLabel('Changes all animations to Rin pack')
+PackGroup:AddLabel('Affected features:')
+PackGroup:AddLabel('• Auto Prehold')
+PackGroup:AddLabel('• Aimbot V1')
+PackGroup:AddLabel('• Double Tap')
+PackGroup:AddLabel('• Auto Chip')
+PackGroup:AddLabel('• Shove Reach')
+PackGroup:AddLabel('• Auto Header')
 
 -- INTERPOLATION TAB
 local InterpGroup = Tabs.Interpolation:AddLeftGroupbox('Interpolation')
@@ -1910,22 +1724,18 @@ for i = 11, #interpValues do
     end)
 end
 
--- NEW DYNAMIC INTERPOLATION FEATURE
 local DynamicInterpGroup = Tabs.Interpolation:AddRightGroupbox('Dynamic Interpolation')
 DynamicInterpGroup:AddToggle('DynamicInterpToggle', {
     Text = 'Enable Dynamic Interpolation',
     Default = false,
     Callback = function(Value)
         if Value then
-            local normalInterp = Options.NormalInterpSlider and Options.NormalInterpSlider.Value or 35
-            local ballInterp = Options.BallInterpSlider and Options.BallInterpSlider.Value or 15
-            
             loadstring([[
                 local Workspace = game:GetService("Workspace")
                 local RunService = game:GetService("RunService")
                 
-                local normalInterp = ]] .. normalInterp .. [[
-                local ballInterp = ]] .. ballInterp .. [[
+                local normalInterp = ]] .. (Options.NormalInterpSlider and Options.NormalInterpSlider.Value or 35) .. [[
+                local ballInterp = ]] .. (Options.BallInterpSlider and Options.BallInterpSlider.Value or 15) .. [[
                 
                 local function getBall()
                     local tempFolder = Workspace:FindFirstChild("Temp")
@@ -1961,6 +1771,11 @@ DynamicInterpGroup:AddSlider('NormalInterpSlider', {
     Min = 5,
     Max = 100,
     Rounding = 0,
+    Callback = function(Value)
+        if not Toggles.DynamicInterpToggle.Value then
+            setfflag("InterpolationMaxDelayMSec", tostring(Value))
+        end
+    end
 })
 
 DynamicInterpGroup:AddSlider('BallInterpSlider', {
@@ -1969,6 +1784,7 @@ DynamicInterpGroup:AddSlider('BallInterpSlider', {
     Min = 5,
     Max = 100,
     Rounding = 0,
+    Callback = function(Value) end
 })
 
 DynamicInterpGroup:AddLabel('Automatically changes interpolation')
@@ -1976,106 +1792,264 @@ DynamicInterpGroup:AddLabel('when you have ball possession')
 
 -- CONFIGURATION TAB
 local KeybindGroup = Tabs.Configuration:AddLeftGroupbox('Keybind Configuration')
+KeybindGroup:AddLabel('Auto Header Key'):AddKeyPicker('AutoHeaderKeybind', {
+    Default = 'T',
+    NoUI = false,
+    Text = 'Auto Header',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Auto Header keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto Header keybind changed:', New) end
+})
 
--- Add all keybind pickers first
-local keybindOptions = {
-    {name = 'AutoHeaderKeybind', default = 'T', text = 'Auto Header Key'},
-    {name = 'TPMossKeybind', default = 'Y', text = 'TP Moss Key'},
-    {name = 'DoubleTapKeybind', default = 'X', text = 'Double Tap Key'},
-    {name = 'AutoGkKeybind', default = 'One', text = 'Auto GK Key'},
-    {name = 'AimbotHighKeybind', default = 'V', text = 'Aimbot V1 High Key'},
-    {name = 'AimbotLowKeybind', default = 'B', text = 'Aimbot V1 Low Key'},
-    {name = 'AimbotV2TopKeybind', default = 'One', text = 'Aimbot V2 Top Key'},
-    {name = 'AimbotV2BottomKeybind', default = 'Two', text = 'Aimbot V2 Bottom Key'},
-    {name = 'PreholdToggleKeybind', default = 'Four', text = 'Auto Prehold Toggle'},
-    {name = 'PreholdManualKeybind', default = 'G', text = 'Auto Prehold Manual'},
-    {name = 'AutoM2Keybind', default = 'Three', text = 'Auto M2 Toggle'},
-    {name = 'PhysReachKeybind', default = 'R', text = 'Phys Reach Key'},
-    {name = 'AutoFlickKeybind', default = 'Five', text = 'Auto Flick Key'},
-    {name = 'LastDiscKeybind', default = 'J', text = 'Auto Last Disc Key'},
-}
+KeybindGroup:AddLabel('TP Moss Key'):AddKeyPicker('TPMossKeybind', {
+    Default = 'Y',
+    NoUI = false,
+    Text = 'TP Moss',
+    Mode = 'Toggle',
+    Callback = function(Value) print('TP Moss keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('TP Moss keybind changed:', New) end
+})
 
-for _, option in ipairs(keybindOptions) do
-    KeybindGroup:AddLabel(option.text):AddKeyPicker(option.name, {
-        Default = option.default,
-        NoUI = false,
-        Text = option.text,
-        Mode = 'Toggle',
-    })
-end
+KeybindGroup:AddLabel('Double Tap Key'):AddKeyPicker('DoubleTapKeybind', {
+    Default = 'X',
+    NoUI = false,
+    Text = 'Double Tap',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Double Tap keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Double Tap keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Auto GK Key'):AddKeyPicker('AutoGkKeybind', {
+    Default = 'One',
+    NoUI = false,
+    Text = 'Auto GK',
+    Mode = 'Hold',
+    Callback = function(Value) print('Auto GK keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto GK keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Aimbot High Key'):AddKeyPicker('AimbotHighKeybind', {
+    Default = 'V',
+    NoUI = false,
+    Text = 'Aimbot High',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Aimbot High keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Aimbot High keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Aimbot Low Key'):AddKeyPicker('AimbotLowKeybind', {
+    Default = 'B',
+    NoUI = false,
+    Text = 'Aimbot Low',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Aimbot Low keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Aimbot Low keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Auto Prehold Toggle'):AddKeyPicker('PreholdToggleKeybind', {
+    Default = 'Four',
+    NoUI = false,
+    Text = 'Auto Prehold Toggle',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Auto Prehold Toggle keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto Prehold Toggle keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Auto Prehold Manual'):AddKeyPicker('PreholdManualKeybind', {
+    Default = 'G',
+    NoUI = false,
+    Text = 'Auto Prehold Manual',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Auto Prehold Manual keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto Prehold Manual keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Auto M2 Toggle'):AddKeyPicker('AutoM2Keybind', {
+    Default = 'Three',
+    NoUI = false,
+    Text = 'Auto M2 Toggle',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Auto M2 keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto M2 keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Auto Chip Key'):AddKeyPicker('AutoChipKeybind', {
+    Default = 'Five',
+    NoUI = false,
+    Text = 'Auto Chip',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Auto Chip keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Auto Chip keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Aimbot V2 Top'):AddKeyPicker('AimbotV2TopKeybind', {
+    Default = 'One',
+    NoUI = false,
+    Text = 'Aimbot V2 Top',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Aimbot V2 Top keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Aimbot V2 Top keybind changed:', New) end
+})
+
+KeybindGroup:AddLabel('Aimbot V2 Bottom'):AddKeyPicker('AimbotV2BottomKeybind', {
+    Default = 'Two',
+    NoUI = false,
+    Text = 'Aimbot V2 Bottom',
+    Mode = 'Toggle',
+    Callback = function(Value) print('Aimbot V2 Bottom keybind clicked:', Value) end,
+    ChangedCallback = function(New) print('Aimbot V2 Bottom keybind changed:', New) end
+})
 
 local SettingsGroup = Tabs.Configuration:AddRightGroupbox('Settings')
+SettingsGroup:AddSlider('SpeedDefaultSlider', {
+    Text = 'Default Speed Multiplier',
+    Default = 1.24,
+    Min = 1.00,
+    Max = 5.00,
+    Rounding = 2,
+    Callback = function(Value)
+        Options.SpeedSlider:SetValue(Value)
+    end
+})
 
-local sliderOptions = {
-    {name = 'SpeedDefaultSlider', default = 1.24, min = 1.00, max = 5.00, rounding = 2, text = 'Default Speed Multiplier', target = 'SpeedSlider'},
-    {name = 'HitboxDefaultSlider', default = 15, min = 1, max = 50, rounding = 0, text = 'Default Hitbox Size', target = 'HitboxSlider'},
-    {name = 'AimbotPowerDefaultSlider', default = 100, min = 100, max = 999, rounding = 0, text = 'Default Aimbot Power', target = 'AimbotPowerSlider'},
-    {name = 'PreholdRangeDefaultSlider', default = 4, min = 1, max = 15, rounding = 1, text = 'Default Prehold Range', target = 'PreholdRangeSlider'},
-    {name = 'AimbotV2RangeDefaultSlider', default = 7, min = 1, max = 20, rounding = 0, text = 'Default Aimbot V2 Range', target = 'AimbotV2RangeSlider'},
-    {name = 'AimbotV2CooldownDefaultSlider', default = 1, min = 0.1, max = 5, rounding = 1, text = 'Default Aimbot V2 Cooldown', target = 'AimbotV2CooldownSlider'},
-    {name = 'AimbotV2PowerDefaultSlider', default = 140, min = 100, max = 999, rounding = 0, text = 'Default Aimbot V2 Power', target = 'AimbotV2PowerSlider'},
-    {name = 'AutoFlickPowerDefaultSlider', default = 27.13, min = 10, max = 50, rounding = 2, text = 'Default Auto Flick Power', target = 'AutoFlickPowerSlider'},
-    {name = 'AutoFlickXDefaultSlider', default = 14.28, min = 5, max = 50, rounding = 2, text = 'Default Auto Flick X', target = 'AutoFlickXSlider'},
-    {name = 'AutoFlickYDefaultSlider', default = 21.85, min = 5, max = 50, rounding = 2, text = 'Default Auto Flick Y', target = 'AutoFlickYSlider'},
-    {name = 'AutoFlickZDefaultSlider', default = 32.02, min = 5, max = 50, rounding = 2, text = 'Default Auto Flick Z', target = 'AutoFlickZSlider'},
-    {name = 'NormalInterpDefaultSlider', default = 35, min = 5, max = 100, rounding = 0, text = 'Default Normal Interpolation', target = 'NormalInterpSlider'},
-    {name = 'BallInterpDefaultSlider', default = 15, min = 5, max = 100, rounding = 0, text = 'Default Ball Interpolation', target = 'BallInterpSlider'},
-}
+SettingsGroup:AddSlider('HitboxDefaultSlider', {
+    Text = 'Default Hitbox Size',
+    Default = 15,
+    Min = 1,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(Value)
+        Options.HitboxSlider:SetValue(Value)
+    end
+})
 
-for _, option in ipairs(sliderOptions) do
-    SettingsGroup:AddSlider(option.name, {
-        Text = option.text,
-        Default = option.default,
-        Min = option.min,
-        Max = option.max,
-        Rounding = option.rounding,
-        Callback = function(Value)
-            if Options[option.target] then
-                Options[option.target]:SetValue(Value)
-            end
-        end
-    })
-end
-
-SettingsGroup:AddButton('Reset All Settings', function()
-    local togglesToReset = {
-        'SpeedToggle', 'StaminaToggle', 'KickToggle', 'LastDiscToggle', 'TPMossToggle',
-        'HitboxToggle', 'HeaderToggle', 'AutoGkToggle', 'ZoomToggle', 'AimbotToggle',
-        'AimbotV2Toggle', 'PreholdToggle', 'DoubleTapToggle', 'AutoM2Toggle',
-        'DynamicInterpToggle', 'PhysReachToggle', 'AutoFlickToggle', 'BallTrailToggle',
-        'RinPackToggle'
-    }
-    
-    for _, toggleName in ipairs(togglesToReset) do
-        if Toggles[toggleName] then
-            Toggles[toggleName]:SetValue(false)
+SettingsGroup:AddSlider('AimbotPowerDefaultSlider', {
+    Text = 'Default Aimbot Power',
+    Default = 100,
+    Min = 100,
+    Max = 999,
+    Rounding = 0,
+    Callback = function(Value)
+        if Options.AimbotPowerSlider then
+            Options.AimbotPowerSlider:SetValue(Value)
         end
     end
+})
+
+SettingsGroup:AddSlider('PreholdRangeDefaultSlider', {
+    Text = 'Default Prehold Range',
+    Default = 4,
+    Min = 1,
+    Max = 15,
+    Rounding = 1,
+    Callback = function(Value)
+        if Options.PreholdRangeSlider then
+            Options.PreholdRangeSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddSlider('ShoveReachDefaultSlider', {
+    Text = 'Default Shove Reach',
+    Default = 25,
+    Min = 10,
+    Max = 50,
+    Rounding = 0,
+    Callback = function(Value)
+        if Options.ShoveReachSlider then
+            Options.ShoveReachSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddSlider('ChipForceDefaultSlider', {
+    Text = 'Default Chip Force',
+    Default = 27.13,
+    Min = 10,
+    Max = 100,
+    Rounding = 2,
+    Callback = function(Value)
+        if Options.ChipForceSlider then
+            Options.ChipForceSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddSlider('ChipVectorDefaultSlider', {
+    Text = 'Default Chip Vector',
+    Default = 1.0,
+    Min = 0.5,
+    Max = 3.0,
+    Rounding = 1,
+    Callback = function(Value)
+        if Options.ChipVectorSlider then
+            Options.ChipVectorSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddSlider('AimbotV2RangeDefaultSlider', {
+    Text = 'Default Aimbot V2 Range',
+    Default = 7,
+    Min = 3,
+    Max = 20,
+    Rounding = 0,
+    Callback = function(Value)
+        if Options.AimbotV2RangeSlider then
+            Options.AimbotV2RangeSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddSlider('AimbotV2PowerDefaultSlider', {
+    Text = 'Default Aimbot V2 Power',
+    Default = 140,
+    Min = 100,
+    Max = 999,
+    Rounding = 0,
+    Callback = function(Value)
+        if Options.AimbotV2PowerSlider then
+            Options.AimbotV2PowerSlider:SetValue(Value)
+        end
+    end
+})
+
+SettingsGroup:AddButton('Reset All Settings', function()
+    Toggles.SpeedToggle:SetValue(false)
+    Toggles.StaminaToggle:SetValue(false)
+    Toggles.KickToggle:SetValue(false)
+    Toggles.LastDiscToggle:SetValue(false)
+    Toggles.TPMossToggle:SetValue(false)
+    Toggles.HitboxToggle:SetValue(false)
+    Toggles.HeaderToggle:SetValue(false)
+    Toggles.AutoGkToggle:SetValue(false)
+    Toggles.ZoomToggle:SetValue(false)
+    Toggles.AimbotToggle:SetValue(false)
+    Toggles.PreholdToggle:SetValue(false)
+    Toggles.DoubleTapToggle:SetValue(false)
+    Toggles.AutoM2Toggle:SetValue(false)
+    Toggles.ShoveToggle:SetValue(false)
+    Toggles.AutoChipToggle:SetValue(false)
+    Toggles.AimbotV2Toggle:SetValue(false)
+    Toggles.RinPackToggle:SetValue(false)
+    Toggles.DynamicInterpToggle:SetValue(false)
     
-    -- Reset sliders
     Options.SpeedSlider:SetValue(1.24)
     Options.HitboxSlider:SetValue(15)
     Options.AimbotPowerSlider:SetValue(100)
     Options.PreholdRangeSlider:SetValue(4)
+    Options.ShoveReachSlider:SetValue(25)
+    Options.ChipForceSlider:SetValue(27.13)
+    Options.ChipVectorSlider:SetValue(1.0)
     Options.AimbotV2RangeSlider:SetValue(7)
-    Options.AimbotV2CooldownSlider:SetValue(1)
     Options.AimbotV2PowerSlider:SetValue(140)
-    Options.AutoFlickPowerSlider:SetValue(27.13)
-    Options.AutoFlickXSlider:SetValue(14.28)
-    Options.AutoFlickYSlider:SetValue(21.85)
-    Options.AutoFlickZSlider:SetValue(32.02)
     Options.NormalInterpSlider:SetValue(35)
     Options.BallInterpSlider:SetValue(15)
-    
-    -- Reset other options
-    if Options.BallTrailMode then Options.BallTrailMode:SetValue('Single Color') end
-    if Options.BallTrailColor1 then Options.BallTrailColor1:SetValue(Color3.new(0, 0.712, 1)) end
-    if Options.BallTrailColor2 then Options.BallTrailColor2:SetValue(Color3.new(1, 0, 0)) end
     
     Library:Notify('All settings reset to default', 3)
 end)
 
--- UI Settings
+-- Original UI Settings code
 Library:SetWatermarkVisibility(true)
 
 local FrameTimer = tick()
@@ -2083,21 +2057,21 @@ local FrameCounter = 0;
 local FPS = 60;
 
 local WatermarkConnection = game:GetService('RunService').RenderStepped:Connect(function()
-    FrameCounter = FrameCounter + 1
+    FrameCounter += 1;
 
     if (tick() - FrameTimer) >= 1 then
-        FPS = FrameCounter
-        FrameTimer = tick()
-        FrameCounter = 0
-    end
+        FPS = FrameCounter;
+        FrameTimer = tick();
+        FrameCounter = 0;
+    end;
 
-    Library:SetWatermark(('Vevo Hub v1.3 | %s fps | %s ms'):format(
+    Library:SetWatermark(('Vevo Hub v1.2 | %s fps | %s ms'):format(
         math.floor(FPS),
         math.floor(game:GetService('Stats').Network.ServerStatsItem['Data Ping']:GetValue())
-    ))
-end)
+    ));
+end);
 
-Library.KeybindFrame.Visible = true
+Library.KeybindFrame.Visible = true;
 
 Library:OnUnload(function()
     WatermarkConnection:Disconnect()
@@ -2112,15 +2086,36 @@ MenuGroup:AddLabel('Menu bind'):AddKeyPicker('MenuKeybind', { Default = 'End', N
 
 Library.ToggleKeybind = Options.MenuKeybind 
 
--- Apply theme with accent color
+-- Apply theme with grayish accent color
 ThemeManager:SetLibrary(Library)
 SaveManager:SetLibrary(Library)
 
 SaveManager:IgnoreThemeSettings()
+
 SaveManager:SetIgnoreIndexes({ 'MenuKeybind' })
 
 ThemeManager:SetFolder('VevoHub')
 SaveManager:SetFolder('VevoHub/Freestyle Football')
+
+-- Set accent color to grayish
+ThemeManager.BuiltInThemes['Gray'] = {
+    { 
+        FontColor = "ffffff",
+        MainColor = "1c1c1c",
+        AccentColor = "333333",
+        BackgroundColor = "141414",
+        OutlineColor = "323232"
+    }
+}
+
+-- Apply the gray theme
+Library.AccentColor = Color3.fromHex('#333333')
+Library.MainColor = Color3.fromHex('#1c1c1c')
+Library.BackgroundColor = Color3.fromHex('#141414')
+Library.OutlineColor = Color3.fromHex('#323232')
+Library.FontColor = Color3.fromHex('#ffffff')
+Library.AccentColorDark = Library:GetDarkerColor(Library.AccentColor)
+Library:UpdateColorsUsingRegistry()
 
 SaveManager:BuildConfigSection(Tabs['UI Settings'])
 ThemeManager:ApplyToTab(Tabs['UI Settings'])
