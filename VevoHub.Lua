@@ -11,9 +11,8 @@ local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local HttpService = game:GetService('HttpService')
 local Players = game:GetService('Players')
 local LocalPlayer = Players.LocalPlayer
-local UserInputService = game:GetService('UserInputService')
 
--- Persistent HWID Generator (Stable across sessions)
+-- Persistent HWID Generator (Stable across sessions) - FIXED VERSION
 local function GetStableHWID()
     local success, result = pcall(function()
         return readfile("VevoHub/hwid.dat")
@@ -22,23 +21,21 @@ local function GetStableHWID()
     if success and result and result ~= "" then
         return result
     else
-        -- Generate a stable HWID based on hardware identifiers
-        local platform = UserInputService:GetPlatform() or 0
+        -- Generate a stable HWID using only Roblox-specific values
         local userId = LocalPlayer.UserId
         local accountId = LocalPlayer.AccountAge
         local nameHash = string.gsub(LocalPlayer.Name, "[^%w]", "")
         
-        -- Combine multiple factors for a more stable HWID
-        local hwidBase = string.format("%d-%d-%s-%d", 
+        -- Create a unique identifier from Roblox account data
+        local hwidBase = string.format("%d-%d-%s", 
             userId, 
             accountId, 
-            nameHash:sub(1, math.min(5, #nameHash)), 
-            platform
+            nameHash:sub(1, math.min(10, #nameHash))
         )
         
-        -- Create a consistent hash
-        local hwid = HttpService:GenerateGUID(false)
-        local stableHwid = hwid:sub(1, 8) .. "-" .. #hwidBase .. "-" .. hwid:sub(20, 25)
+        -- Generate a GUID and combine with the hash for consistent format
+        local guid = HttpService:GenerateGUID(false)
+        local stableHwid = guid:sub(1, 8) .. "-" .. string.sub(hwidBase, 1, 8) .. "-" .. guid:sub(25, 32)
         
         -- Save it for future sessions
         pcall(function()
@@ -139,10 +136,11 @@ local RegistrationWindow = Library:CreateWindow({
     AutoShow = false,
     TabPadding = 8,
     MenuFadeTime = 0.2,
-    Size = UDim2.new(0, 400, 0, 280)
+    Size = UDim2.new(0, 400, 0, 250)
 })
 
 -- Set gray accent for registration window
+Library.AccentColor = Color3.fromHex('#333333')
 RegistrationWindow.AccentColor = Color3.fromHex('#333333')
 RegistrationWindow.MainColor = Color3.fromHex('#1c1c1c')
 RegistrationWindow.BackgroundColor = Color3.fromHex('#141414')
@@ -171,11 +169,10 @@ if activated then
     LoadMainScript()
 else
     -- UI Elements
-    RegistrationGroup:AddLabel('━━━━━━━━━━━━━━━━━━━━'):AddDivider()
+    RegistrationGroup:AddLabel('━━━━━━━━━━━━━━━━━━━━')
     
     local hwidDisplay = RegistrationGroup:AddLabel('HWID: ' .. currentHWID:sub(1, 15) .. '...')
     local statusDisplay = RegistrationGroup:AddLabel('Status: ' .. keyStatus)
-    
     statusDisplay.TextColor3 = Color3.fromRGB(255, 100, 100)
     
     RegistrationGroup:AddDivider()
@@ -198,7 +195,6 @@ else
                     keyStatus = "Activated Successfully!"
                     isAuthenticated = true
                     
-                    -- Update UI
                     statusDisplay.Text = 'Status: ' .. keyStatus
                     statusDisplay.TextColor3 = Color3.fromRGB(100, 255, 100)
                     
@@ -208,7 +204,6 @@ else
                         Duration = 2
                     })
                     
-                    -- Load main script
                     task.wait(1)
                     RegistrationWindow:Unload()
                     LoadMainScript()
@@ -293,42 +288,6 @@ else
     statusText.Font = Enum.Font.Gotham
     statusText.TextSize = 14
     statusText.Parent = statusFrame
-    
-    -- Add master key hint (hidden in UI but accessible)
-    if not isAuthenticated then
-        task.spawn(function()
-            task.wait(0.5)
-            -- Check for master key entry (hidden feature)
-            local connection
-            connection = UserInputService.InputBegan:Connect(function(input, gp)
-                if gp then return end
-                if input.KeyCode == Enum.KeyCode.F8 then
-                    -- Secret master key activation (type "blankvevo" in the input)
-                    local masterKey = "blankvevo"
-                    local valid, reason = ValidateAndActivateKey(masterKey)
-                    
-                    if valid then
-                        keyStatus = "Master Key Activated!"
-                        isAuthenticated = true
-                        
-                        statusDisplay.Text = 'Status: ' .. keyStatus
-                        statusDisplay.TextColor3 = Color3.fromRGB(100, 255, 100)
-                        
-                        RegistrationWindow:Notification({
-                            Title = 'Success',
-                            Content = 'Master key activated!',
-                            Duration = 2
-                        })
-                        
-                        task.wait(1)
-                        connection:Disconnect()
-                        RegistrationWindow:Unload()
-                        LoadMainScript()
-                    end
-                end
-            end)
-        end)
-    end
 end
 
 -- ============== MAIN SCRIPT ==============
