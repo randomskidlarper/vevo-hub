@@ -158,7 +158,7 @@ if activated then
     isAuthenticated = true
     keyStatus = "Activated (" .. activatedKey .. ")"
     
-    RegistrationWindow:Notification({
+    RegistrationWindow:Notify({
         Title = 'Already Activated',
         Content = 'HWID already verified! Loading hub...',
         Duration = 2
