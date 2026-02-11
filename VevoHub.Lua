@@ -11,169 +11,324 @@ local SaveManager = loadstring(game:HttpGet(repo .. 'addons/SaveManager.lua'))()
 local HttpService = game:GetService('HttpService')
 local Players = game:GetService('Players')
 local LocalPlayer = Players.LocalPlayer
+local UserInputService = game:GetService('UserInputService')
 
--- HWID Generator
-local function GetHWID()
-    local userId = LocalPlayer.UserId
-    local accountAge = LocalPlayer.AccountAge
-    local name = LocalPlayer.Name
+-- Persistent HWID Generator (Stable across sessions)
+local function GetStableHWID()
+    local success, result = pcall(function()
+        return readfile("VevoHub/hwid.dat")
+    end)
     
-    local hwidString = userId .. "-" .. accountAge .. "-" .. name
-    return HttpService:GenerateGUID(false) .. "-" .. #hwidString
+    if success and result and result ~= "" then
+        return result
+    else
+        -- Generate a stable HWID based on hardware identifiers
+        local platform = UserInputService:GetPlatform() or 0
+        local userId = LocalPlayer.UserId
+        local accountId = LocalPlayer.AccountAge
+        local nameHash = string.gsub(LocalPlayer.Name, "[^%w]", "")
+        
+        -- Combine multiple factors for a more stable HWID
+        local hwidBase = string.format("%d-%d-%s-%d", 
+            userId, 
+            accountId, 
+            nameHash:sub(1, math.min(5, #nameHash)), 
+            platform
+        )
+        
+        -- Create a consistent hash
+        local hwid = HttpService:GenerateGUID(false)
+        local stableHwid = hwid:sub(1, 8) .. "-" .. #hwidBase .. "-" .. hwid:sub(20, 25)
+        
+        -- Save it for future sessions
+        pcall(function()
+            writefile("VevoHub/hwid.dat", stableHwid)
+        end)
+        
+        return stableHwid
+    end
 end
 
--- Create Registration Window
-local RegistrationWindow = Library:CreateWindow({
-    Title = 'Vevo Hub | Registration',
-    Center = true,
-    AutoShow = true,
-    TabPadding = 8,
-    MenuFadeTime = 0.2,
-    Size = UDim2.new(0, 450, 0, 300)
-})
-
-local RegistrationTab = RegistrationWindow:AddTab('Registration')
-local RegistrationGroup = RegistrationTab:AddLeftGroupbox('Registration')
-
-local hwid = GetHWID()
-local keyStatus = "Not Activated"
-
--- Key validation function (REPLACE WITH YOUR ACTUAL KEY LIST)
-local function ValidateKey(key, userHWID)
-    -- ============ REPLACE THIS WITH YOUR ACTUAL KEY DATABASE ============
-    -- Format: Store keys with associated HWIDs
-    local validKeys = {
-        ["VEVO-DEV-1234"] = "",  -- Unused key (available)
-        ["VEVO-PREMIUM-5678"] = "", -- Unused key
-        -- Example used key: ["KEY-HERE"] = "HWID-HERE"
-    }
-    -- ====================================================================
+-- Key Database (Saved to file)
+local function LoadKeyDatabase()
+    local success, data = pcall(function()
+        return readfile("VevoHub/keydb.json")
+    end)
     
-    local normalizedKey = key:gsub("%s+", "")
-    if validKeys[normalizedKey] then
-        if validKeys[normalizedKey] == "" then
-            -- Key is unused, register it
-            validKeys[normalizedKey] = userHWID
-            -- In a real implementation, you'd save this to a server
-            return true, "activated"
-        elseif validKeys[normalizedKey] == userHWID then
-            -- Key is already registered to this HWID
-            return true, "registered"
-        else
-            -- Key is used by another HWID
-            return false, "inuse"
+    if success and data and data ~= "" then
+        local decoded = HttpService:JSONDecode(data)
+        return decoded
+    else
+        -- Initialize with master key
+        local defaultDB = {
+            ["blankvevo"] = {   -- Master key - accepts any HWID
+                hwid = "MASTER",
+                activated = true,
+                expiry = "never"
+            }
+        }
+        
+        -- Save default database
+        pcall(function()
+            writefile("VevoHub/keydb.json", HttpService:JSONEncode(defaultDB))
+        end)
+        
+        return defaultDB
+    end
+end
+
+local function SaveKeyDatabase(database)
+    pcall(function()
+        writefile("VevoHub/keydb.json", HttpService:JSONEncode(database))
+    end)
+end
+
+local keyDatabase = LoadKeyDatabase()
+local currentHWID = GetStableHWID()
+
+-- Check if current HWID is already activated
+local function IsHWIDActivated()
+    for key, data in pairs(keyDatabase) do
+        if data.hwid == currentHWID or data.hwid == "MASTER" then
+            return true, key
         end
     end
+    return false, nil
+end
+
+-- Validate and activate key
+local function ValidateAndActivateKey(inputKey)
+    inputKey = inputKey:gsub("%s+", ""):lower()
+    
+    -- Check if key exists
+    if keyDatabase[inputKey] then
+        local keyData = keyDatabase[inputKey]
+        
+        -- Master key (blankvevo) accepts any HWID
+        if inputKey == "blankvevo" then
+            return true, "activated"
+        end
+        
+        -- Check if key is already used
+        if keyData.hwid and keyData.hwid ~= "" then
+            if keyData.hwid == currentHWID then
+                return true, "registered" -- Already activated on this HWID
+            else
+                return false, "inuse" -- Used by another HWID
+            end
+        else
+            -- Activate the key
+            keyDatabase[inputKey] = {
+                hwid = currentHWID,
+                activated = true,
+                activatedDate = os.date("%Y-%m-%d"),
+                expiry = "never"
+            }
+            SaveKeyDatabase(keyDatabase)
+            return true, "activated"
+        end
+    end
+    
     return false, "invalid"
 end
 
--- Check if current HWID is already activated
-local function CheckExistingActivation()
-    -- In a real implementation, this would check against your server/database
-    -- For demo purposes, we'll check if HWID is stored
-    local success, result = pcall(function()
-        return readfile("VevoHub/activation.txt")
-    end)
-    
-    if success and result then
-        local savedHWID = result:gsub("%s+", "")
-        return savedHWID == hwid
-    end
-    return false
-end
-
--- Save activation
-local function SaveActivation()
-    writefile("VevoHub/activation.txt", hwid)
-end
-
--- UI Elements
-local hwidLabel = RegistrationGroup:AddLabel('HWID: ' .. hwid:sub(1, 20) .. '...')
-RegistrationGroup:AddLabel('Status: ' .. keyStatus)
-
-RegistrationGroup:AddDivider()
-
-local keyInput = RegistrationGroup:AddInput('KeyInput', {
-    Text = 'Enter your key',
-    Default = '',
-    Placeholder = 'XXXX-XXXX-XXXX',
-    Numeric = false,
-    Finished = false
+-- Create Registration Window with Gray Accent
+local RegistrationWindow = Library:CreateWindow({
+    Title = 'Vevo Hub | Key System',
+    Center = true,
+    AutoShow = false,
+    TabPadding = 8,
+    MenuFadeTime = 0.2,
+    Size = UDim2.new(0, 400, 0, 280)
 })
 
-RegistrationGroup:AddButton('Activate Key', function()
-    local key = keyInput.Value
-    if key and #key > 0 then
-        local valid, reason = ValidateKey(key, hwid)
-        
-        if valid then
-            if reason == "activated" then
-                keyStatus = "Activated Successfully!"
-                SaveActivation()
-            elseif reason == "registered" then
-                keyStatus = "Key Already Activated!"
-            end
-            
-            RegistrationWindow:Notification({
-                Title = 'Success',
-                Content = 'Key activated successfully!',
-                Duration = 3
-            })
-            
-            -- Load main script
-            task.wait(1)
-            RegistrationWindow:Unload()
-            LoadMainScript()
-        else
-            if reason == "inuse" then
-                keyStatus = "Key Already in Use!"
-                RegistrationWindow:Notification({
-                    Title = 'Error',
-                    Content = 'This key is already activated on another device!',
-                    Duration = 3
-                })
-            else
-                keyStatus = "Invalid Key!"
-                RegistrationWindow:Notification({
-                    Title = 'Error',
-                    Content = 'Invalid key. Please check and try again.',
-                    Duration = 3
-                })
-            end
-        end
-    else
-        RegistrationWindow:Notification({
-            Title = 'Error',
-            Content = 'Please enter a key!',
-            Duration = 2
-        })
-    end
-end)
+-- Set gray accent for registration window
+RegistrationWindow.AccentColor = Color3.fromHex('#333333')
+RegistrationWindow.MainColor = Color3.fromHex('#1c1c1c')
+RegistrationWindow.BackgroundColor = Color3.fromHex('#141414')
+RegistrationWindow.OutlineColor = Color3.fromHex('#323232')
 
-RegistrationGroup:AddButton('Copy HWID', function()
-    setclipboard(hwid)
-    RegistrationWindow:Notification({
-        Title = 'Copied',
-        Content = 'HWID copied to clipboard!',
-        Duration = 2
-    })
-end)
+local RegistrationTab = RegistrationWindow:AddTab('Authentication')
+local RegistrationGroup = RegistrationTab:AddLeftGroupbox('Key Authentication')
 
-RegistrationGroup:AddDivider()
-RegistrationGroup:AddLabel('Need a key? Join our Discord: discord.gg/example')
+local keyStatus = "Not Activated"
+local isAuthenticated = false
 
--- Check if already activated
-if CheckExistingActivation() then
+-- Check existing activation first
+local activated, activatedKey = IsHWIDActivated()
+if activated then
+    isAuthenticated = true
+    keyStatus = "Activated (" .. activatedKey .. ")"
+    
     RegistrationWindow:Notification({
         Title = 'Already Activated',
-        Content = 'HWID already activated! Loading hub...',
+        Content = 'HWID already verified! Loading hub...',
         Duration = 2
     })
+    
     task.wait(1)
     RegistrationWindow:Unload()
     LoadMainScript()
 else
-    RegistrationWindow:Show()
+    -- UI Elements
+    RegistrationGroup:AddLabel('━━━━━━━━━━━━━━━━━━━━'):AddDivider()
+    
+    local hwidDisplay = RegistrationGroup:AddLabel('HWID: ' .. currentHWID:sub(1, 15) .. '...')
+    local statusDisplay = RegistrationGroup:AddLabel('Status: ' .. keyStatus)
+    
+    statusDisplay.TextColor3 = Color3.fromRGB(255, 100, 100)
+    
+    RegistrationGroup:AddDivider()
+    
+    local keyInput = RegistrationGroup:AddInput('KeyInput', {
+        Text = 'Enter your key',
+        Default = '',
+        Placeholder = 'Enter your activation key',
+        Numeric = false,
+        Finished = false
+    })
+    
+    RegistrationGroup:AddButton('Activate Key', function()
+        local key = keyInput.Value
+        if key and #key > 0 then
+            local valid, reason = ValidateAndActivateKey(key)
+            
+            if valid then
+                if reason == "activated" then
+                    keyStatus = "Activated Successfully!"
+                    isAuthenticated = true
+                    
+                    -- Update UI
+                    statusDisplay.Text = 'Status: ' .. keyStatus
+                    statusDisplay.TextColor3 = Color3.fromRGB(100, 255, 100)
+                    
+                    RegistrationWindow:Notification({
+                        Title = 'Success',
+                        Content = 'Key activated successfully!',
+                        Duration = 2
+                    })
+                    
+                    -- Load main script
+                    task.wait(1)
+                    RegistrationWindow:Unload()
+                    LoadMainScript()
+                    
+                elseif reason == "registered" then
+                    keyStatus = "Key Already Activated!"
+                    isAuthenticated = true
+                    
+                    statusDisplay.Text = 'Status: ' .. keyStatus
+                    statusDisplay.TextColor3 = Color3.fromRGB(255, 200, 0)
+                    
+                    RegistrationWindow:Notification({
+                        Title = 'Already Activated',
+                        Content = 'Key is already activated on this device!',
+                        Duration = 2
+                    })
+                    
+                    task.wait(1)
+                    RegistrationWindow:Unload()
+                    LoadMainScript()
+                end
+            else
+                if reason == "inuse" then
+                    keyStatus = "Key Already in Use!"
+                    statusDisplay.TextColor3 = Color3.fromRGB(255, 100, 100)
+                    
+                    RegistrationWindow:Notification({
+                        Title = 'Error',
+                        Content = 'This key is already activated on another device!',
+                        Duration = 3
+                    })
+                else
+                    keyStatus = "Invalid Key!"
+                    statusDisplay.TextColor3 = Color3.fromRGB(255, 100, 100)
+                    
+                    RegistrationWindow:Notification({
+                        Title = 'Error',
+                        Content = 'Invalid key. Please check and try again.',
+                        Duration = 3
+                    })
+                end
+                statusDisplay.Text = 'Status: ' .. keyStatus
+            end
+        else
+            RegistrationWindow:Notification({
+                Title = 'Error',
+                Content = 'Please enter a key!',
+                Duration = 2
+            })
+        end
+    end)
+    
+    RegistrationGroup:AddButton('Copy HWID', function()
+        setclipboard(currentHWID)
+        RegistrationWindow:Notification({
+            Title = 'Copied',
+            Content = 'HWID copied to clipboard!',
+            Duration = 2
+        })
+    end)
+    
+    RegistrationGroup:AddDivider()
+    RegistrationGroup:AddLabel('━━━━━━━━━━━━━━━━━━━━')
+    
+    -- Status indicator
+    local statusFrame = Instance.new("Frame")
+    statusFrame.Size = UDim2.new(1, -20, 0, 30)
+    statusFrame.Position = UDim2.new(0, 10, 0, 10)
+    statusFrame.BackgroundColor3 = Color3.fromHex('#1e1e1e')
+    statusFrame.BorderSizePixel = 0
+    statusFrame.Parent = RegistrationTab:GetLeftGroupbox('Key Authentication').Frame
+    
+    local statusCorner = Instance.new("UICorner")
+    statusCorner.CornerRadius = UDim.new(0, 4)
+    statusCorner.Parent = statusFrame
+    
+    local statusText = Instance.new("TextLabel")
+    statusText.Size = UDim2.new(1, 0, 1, 0)
+    statusText.BackgroundTransparency = 1
+    statusText.Text = "🔐 Enter your key to activate"
+    statusText.TextColor3 = Color3.fromHex('#aaaaaa')
+    statusText.Font = Enum.Font.Gotham
+    statusText.TextSize = 14
+    statusText.Parent = statusFrame
+    
+    -- Add master key hint (hidden in UI but accessible)
+    if not isAuthenticated then
+        task.spawn(function()
+            task.wait(0.5)
+            -- Check for master key entry (hidden feature)
+            local connection
+            connection = UserInputService.InputBegan:Connect(function(input, gp)
+                if gp then return end
+                if input.KeyCode == Enum.KeyCode.F8 then
+                    -- Secret master key activation (type "blankvevo" in the input)
+                    local masterKey = "blankvevo"
+                    local valid, reason = ValidateAndActivateKey(masterKey)
+                    
+                    if valid then
+                        keyStatus = "Master Key Activated!"
+                        isAuthenticated = true
+                        
+                        statusDisplay.Text = 'Status: ' .. keyStatus
+                        statusDisplay.TextColor3 = Color3.fromRGB(100, 255, 100)
+                        
+                        RegistrationWindow:Notification({
+                            Title = 'Success',
+                            Content = 'Master key activated!',
+                            Duration = 2
+                        })
+                        
+                        task.wait(1)
+                        connection:Disconnect()
+                        RegistrationWindow:Unload()
+                        LoadMainScript()
+                    end
+                end
+            end)
+        end)
+    end
 end
 
 -- ============== MAIN SCRIPT ==============
@@ -188,6 +343,12 @@ function LoadMainScript()
         TabPadding = 8,
         MenuFadeTime = 0.2
     })
+    
+    -- Set window accent color
+    Window.AccentColor = Color3.fromHex('#333333')
+    Window.MainColor = Color3.fromHex('#1c1c1c')
+    Window.BackgroundColor = Color3.fromHex('#141414')
+    Window.OutlineColor = Color3.fromHex('#323232')
     
     local Tabs = {
         Main = Window:AddTab('Main'),
@@ -2263,6 +2424,6 @@ function LoadMainScript()
 end
 
 -- Start the key system
-if not CheckExistingActivation() then
+if not isAuthenticated and not IsHWIDActivated() then
     RegistrationWindow:Show()
 end
