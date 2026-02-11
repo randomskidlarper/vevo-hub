@@ -158,15 +158,18 @@ if activated then
     isAuthenticated = true
     keyStatus = "Activated (" .. activatedKey .. ")"
     
-    RegistrationWindow:Notify({
-        Title = 'Already Activated',
-        Content = 'HWID already verified! Loading hub...',
-        Duration = 2
-    })
+    -- CORRECT LINORIA SYNTAX: Library:Notify("Text", Duration)
+    Library:Notify('HWID already verified! Loading hub...', 3)
     
     task.wait(1)
-    RegistrationWindow:Unload()
-    LoadMainScript()
+    
+    -- Use the Library to unload, not the window
+    Library:Unload() 
+    
+    -- Ensure this function is defined somewhere in your script!
+    if LoadMainScript then
+        LoadMainScript()
+    end
 else
     -- UI Elements
     RegistrationGroup:AddLabel('━━━━━━━━━━━━━━━━━━━━')
